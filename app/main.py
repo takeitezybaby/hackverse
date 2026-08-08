@@ -50,6 +50,11 @@ def root_ask_alias(payload: routes.AskQueryRequest):
     """Alias for /api/ask so React UI chat works at root level."""
     return routes.ask_campus_copilot(payload)
 
+@app.get("/allocate", tags=["Frontend Alias"])
+def root_allocate_alias():
+    """Alias for /api/allocate so load balancing metrics can be fetched at root level."""
+    return routes.get_campus_wide_load_balancing()
+
 @app.get("/health", tags=["Health"])
 def health_check():
     """Health check endpoint returning server status, database state, and reference clock."""

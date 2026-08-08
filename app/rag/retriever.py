@@ -134,6 +134,7 @@ class CampusRAG:
             historical_context=context,
         )
 
+<<<<<<< HEAD
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
@@ -166,3 +167,14 @@ class CampusRAG:
 
         with open(in_dir / "documents.json", "r", encoding="utf-8") as f:
             self.documents = json.load(f)
+=======
+    def answer_question(self, user_query: str, current_live_state: str = "Gymnasium: 89.5% (full)") -> dict:
+        ans = self.answer_general_query(user_query, current_live_state)
+        is_fb = getattr(self.embedder, "using_fallback", False)
+        return {
+            "answer": ans,
+            "engine": "Rule-Based Fallback Engine" if is_fb else "Granite 3.1 (Ollama Local)",
+            "is_fallback": is_fb,
+            "fallback_warning": "Local Ollama daemon unreachable on port 11434. Running on fallback mode." if is_fb else None
+        }
+>>>>>>> ef2e0d4ee3a32941df89a41ee622961db7c15082
