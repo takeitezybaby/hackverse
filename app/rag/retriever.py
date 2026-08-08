@@ -241,3 +241,13 @@ class CampusRAG:
             allocation_data=allocation_data,
             historical_context=context,
         )
+
+    def answer_question(self, user_query: str, current_live_state: str = "Gymnasium: 89.5% (full)") -> dict:
+        ans = self.answer_general_query(user_query, current_live_state)
+        is_fb = getattr(self.embedder, "using_fallback", False)
+        return {
+            "answer": ans,
+            "engine": "Rule-Based Fallback Engine" if is_fb else "Granite 3.1 (Ollama Local)",
+            "is_fallback": is_fb,
+            "fallback_warning": "Local Ollama daemon unreachable on port 11434. Running on fallback mode." if is_fb else None
+        }

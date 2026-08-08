@@ -213,10 +213,20 @@ def ask_campus_copilot(payload: AskQueryRequest):
         state_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
     live_state_str = ", ".join(state_lines)
     
+    is_fb = False
+    engine_label = "Granite 3.1 (Ollama Local)"
+    fallback_warn = None
     try:
         rag = get_rag_service()
         answer = rag.answer_general_query(payload.query, live_state_str)
+        is_fb = getattr(rag.embedder, "using_fallback", False)
+        if is_fb:
+            engine_label = "Rule-Based Engine (Fallback)"
+            fallback_warn = "Local Ollama daemon unreachable on port 11434. Running on fallback mode."
     except Exception as e:
+        is_fb = True
+        engine_label = "Rule-Based Engine (Fallback)"
+        fallback_warn = f"Ollama engine exception: {str(e)}"
         answer = f"Live state: {live_state_str}. (LLM engine status note: {str(e)})"
     
     return {
@@ -225,6 +235,9 @@ def ask_campus_copilot(payload: AskQueryRequest):
         "answer": answer,
         "live_state_summary": live_state_str,
         "sources": ["FAISS Snapshot Embeddings", "Live Digital Twin State"],
+        "engine": engine_label,
+        "is_fallback": is_fb,
+        "fallback_warning": fallback_warn,
         "timestamp": eval_time
     }
 
