@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Campus Digital Twin Copilot — Live Dashboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- FontAwesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: { 950: '#0b0f19', 900: '#0f172a', 850: '#131c31', 800: '#1e293b' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #0b0f19; font-family: system-ui, -apple-system, sans-serif; }
+    .glass-card { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.5); }
+    .glass-card:hover { border-color: rgba(99, 102, 241, 0.4); }
+  </style>
+</head>
+<body class="text-slate-100 min-h-screen p-4 md:p-6">
+
+  <!-- Header Bar -->
+  <header class="max-w-7xl mx-auto glass-card rounded-2xl p-4 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-500 flex items-center justify-center text-slate-950 font-bold text-xl shadow-lg">
+        <i class="fa-solid fa-layer-group"></i>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+          Campus Digital Twin Copilot
+          <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-400 border border-indigo-800">FastAPI Live</span>
+        </h1>
+        <p class="text-xs text-slate-400">Process Mining & RAG-driven Campus Congestion Intelligence</p>
+      </div>
+    </div>
+
+    <!-- Right Clock & Score -->
+    <div class="flex items-center space-x-4 text-xs font-mono">
+      <div class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center space-x-2 text-cyan-400">
+        <i class="fa-solid fa-clock text-cyan-500"></i>
+        <span>Reference Clock: <strong id="clock-display" class="text-white">2023-09-12 19:00</strong></span>
+      </div>
+      <div class="px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-emerald-400 flex items-center space-x-2">
+        <i class="fa-solid fa-[#10b981] fa-shield-halved"></i>
+        <span>Load Balance Score: <strong class="text-white">92%</strong></span>
+      </div>
+      <button onclick="refreshData()" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-md flex items-center gap-1.5">
+        <i class="fa-solid fa-rotate-right" id="refresh-icon"></i> Refresh API
+      </button>
+    </div>
+  </header>
+
+  <!-- Prediction Alert Ticker -->
+  <div class="max-w-7xl mx-auto mb-6 p-3.5 rounded-2xl bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs flex items-center justify-between shadow-lg">
+    <div class="flex items-center space-x-3">
+      <span class="px-2 py-0.5 rounded-lg bg-amber-500 text-slate-950 font-bold uppercase tracking-wider text-[10px]">Alert</span>
+      <span id="ticker-text" class="font-medium">Loading live campus congestion telemetry...</span>
+    </div>
+    <button onclick="showGroundTruthModal()" class="text-xs text-amber-400 underline hover:text-white transition-colors">
+      View Ground Truth Anomalies
+    </button>
+  </div>
+
+  <!-- Main Layout -->
+  <main class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Left 2 Cols: Live Venues Grid -->
+    <section class="lg:col-span-2 space-y-6">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-building-user text-indigo-400"></i> Live Campus Venues (12)
+        </h2>
+        <span class="text-xs text-slate-400">Data source: <code class="text-cyan-400">http://localhost:8000/forecast</code></span>
+      </div>
+
+      <!-- Venues Grid -->
+      <div id="venues-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Rendered dynamically -->
+        <div class="glass-card p-6 rounded-2xl text-center text-slate-400 animate-pulse">Loading venues from Python backend...</div>
+      </div>
+
+      <!-- Occupancy Chart Card -->
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-chart-line text-cyan-400"></i> 24-Hour Occupancy Curve: <span id="chart-venue-title" class="text-cyan-400">Main Library</span>
+            </h3>
+            <p class="text-xs text-slate-400">Observed 15-min percentage vs Historical Average</p>
+          </div>
+        </div>
+        <div class="h-64">
+          <canvas id="occupancyChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Col: Copilot & Actions -->
+    <section class="space-y-6">
+      
+      <!-- Interactive Ingestion Simulation Card -->
+      <div class="glass-card p-5 rounded-2xl space-y-4">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-wifi text-emerald-400"></i> Live Sensor Simulation
+        </h3>
+        <p class="text-xs text-slate-400">Simulate a student check-in event. Directly calls <code class="text-cyan-400">POST /api/ingest/checkin</code>.</p>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="text-[11px] font-mono text-slate-300 block mb-1">Select Venue:</label>
+            <select id="ingest-venue-select" class="w-full bg-slate-900 border border-slate-700 text-xs rounded-xl p-2.5 text-white focus:outline-none focus:border-indigo-500">
+              <option value="Gymnasium">Gymnasium (Cap: 50)</option>
+              <option value="Main Library">Main Library (Cap: 200)</option>
+              <option value="Computer Lab B">Computer Lab B (Cap: 35)</option>
+              <option value="Central Cafeteria">Central Cafeteria (Cap: 180)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-[11px] font-mono text-slate-300 block mb-1">Student ID:</label>
+            <input type="text" id="ingest-user-id" value="u_9999" class="w-full bg-slate-900 border border-slate-700 text-xs rounded-xl p-2.5 text-white focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <button onclick="submitLiveCheckin()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition-all shadow-lg flex items-center justify-center gap-2">
+            <i class="fa-solid fa-person-walking-arrow-right"></i> Send Check-in Event
+          </button>
+          <p id="ingest-status" class="text-[11px] text-center font-mono text-slate-400 min-h-[16px]"></p>
+        </div>
+      </div>
+
+      <!-- Your Day Card -->
+      <div class="glass-card p-5 rounded-2xl space-y-3">
+        <div class="flex items-center space-x-3 pb-3 border-b border-slate-800">
+          <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80" class="w-10 h-10 rounded-full border border-indigo-500">
+          <div>
+            <h4 class="text-xs font-bold text-white">Alex Mercer (u_0042)</h4>
+            <p class="text-[10px] text-indigo-400">CS & AI Major • Twin Layer 3 Active</p>
+          </div>
+        </div>
+        
+        <div class="p-3 rounded-xl bg-indigo-950/50 border border-indigo-800/60 text-xs space-y-1.5">
+          <div class="flex justify-between items-center text-indigo-300 font-bold text-[11px]">
+            <span>Routine Alert: Gymnasium</span>
+            <span class="text-amber-400">Predicted 94% Full</span>
+          </div>
+          <p class="text-slate-300 text-[11px]">Usual visit at 19:00 will hit capacity limits.</p>
+          <div class="p-2 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-emerald-300 flex items-center justify-between">
+            <span>Option: Early Entry at 18:30 (60% full)</span>
+            <span class="font-bold">Save 25 min</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Granite Copilot Panel -->
+      <div class="glass-card p-5 rounded-2xl space-y-3">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-robot text-indigo-400"></i> AI Copilot (IBM Granite)
+        </h3>
+        <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-2 text-slate-300">
+          <p>💬 <strong>User:</strong> "Why is Computer Lab A empty today?"</p>
+          <p class="text-cyan-300">🤖 <strong>Granite:</strong> "Computer Lab A has an active infrastructure outage on Sep 10. 1,290 student check-ins have been rerouted to Lab B."</p>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Ground Truth Modal -->
+  <div id="gt-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
+    <div class="glass-card rounded-2xl max-w-xl w-full p-6 space-y-4 text-xs">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-white text-sm">Ground Truth Injected Anomalies</h3>
+        <button onclick="hideGroundTruthModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div id="gt-content" class="font-mono space-y-2 text-slate-300 max-h-64 overflow-y-auto">Loading...</div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:8000";
+    let chartInstance = null;
+    let cachedResources = [];
+
+    async function fetchAPI(endpoint) {
+      try {
+        const res = await fetch(API_BASE + endpoint);
+        if (!res.ok) throw new Error("Status " + res.status);
+        return await res.json();
+      } catch (err) {
+        console.warn("API offline:", err);
+        return null;
+      }
+    }
+
+    async function refreshData() {
+      document.getElementById('refresh-icon').classList.add('fa-spin');
+      
+      const data = await fetchAPI('/forecast');
+      if (data && Array.isArray(data)) {
+        cachedResources = data;
+        renderVenues(data);
+        updateTicker(data);
+        if (data.length > 0) renderChart(data[0]);
+      } else {
+        document.getElementById('venues-grid').innerHTML = `
+          <div class="col-span-2 glass-card p-6 rounded-2xl text-center space-y-2">
+            <p class="text-amber-400 font-bold text-xs">Backend at ${API_BASE} is offline or starting.</p>
+            <p class="text-slate-400 text-xs">Run <code class="text-cyan-400">python -m app.main</code> in your terminal!</p>
+          </div>
+        `;
+      }
+      
+      setTimeout(() => document.getElementById('refresh-icon').classList.remove('fa-spin'), 600);
+    }
+
+    function getBucketColor(bucket) {
+      switch(bucket) {
+        case 'empty': return 'bg-emerald-950/80 text-emerald-400 border-emerald-800';
+        case 'moderate': return 'bg-cyan-950/80 text-cyan-400 border-cyan-800';
+        case 'high': return 'bg-amber-950/80 text-amber-400 border-amber-800';
+        case 'full': return 'bg-rose-950/80 text-rose-400 border-rose-800';
+        case 'overflow': return 'bg-purple-950/80 text-purple-400 border-purple-800';
+        default: return 'bg-slate-800 text-slate-300 border-slate-700';
+      }
+    }
+
+    function renderVenues(resources) {
+      const grid = document.getElementById('venues-grid');
+      grid.innerHTML = resources.map(res => {
+        const colorClass = getBucketColor(res.stateBucket);
+        return `
+          <div class="glass-card p-4 rounded-2xl space-y-3 cursor-pointer hover:scale-[1.01] transition-all" onclick="selectVenueForChart('${res.name}')">
+            <div class="flex justify-between items-start">
+              <div>
+                <h4 class="font-bold text-white text-sm">${res.name}</h4>
+                <p class="text-[10px] text-slate-400 font-mono">${res.category.toUpperCase()} • Cap: ${res.capacityMax}</p>
+              </div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${colorClass}">
+                ${res.stateBucket}
+              </span>
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs font-mono">
+                <span class="text-slate-300">Occupancy</span>
+                <span class="font-bold text-white">${res.currentOccupancy}% (${res.capacityCurrent}/${res.capacityMax})</span>
+              </div>
+              <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                <div class="bg-gradient-to-r from-cyan-500 to-indigo-500 h-full rounded-full transition-all duration-500" style="width: ${Math.min(res.currentOccupancy, 100)}%"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateTicker(resources) {
+      const busy = resources.filter(r => r.currentOccupancy >= 85);
+      const ticker = document.getElementById('ticker-text');
+      if (busy.length > 0) {
+        const names = busy.map(b => `${b.name} (${b.currentOccupancy}%)`).join(', ');
+        ticker.innerText = `Congestion Alert: High capacity detected at ${names}. Process mining reroutes active!`;
+      } else {
+        ticker.innerText = `Campus Digital Twin nominal: 12 venues active across 1,500 simulated students.`;
+      }
+    }
+
+    function selectVenueForChart(venueName) {
+      const res = cachedResources.find(r => r.name === venueName);
+      if (res) renderChart(res);
+    }
+
+    function renderChart(res) {
+      document.getElementById('chart-venue-title').innerText = res.name;
+      const ctx = document.getElementById('occupancyChart').getContext('2d');
+      
+      const labels = res.hourlyForecast.map(h => h.time);
+      const predicted = res.hourlyForecast.map(h => h.occupancy);
+      const historical = res.hourlyForecast.map(h => h.historicalAvg);
+
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Predicted Occupancy %',
+              data: predicted,
+              borderColor: '#06b6d4',
+              backgroundColor: 'rgba(6, 182, 212, 0.15)',
+              fill: true,
+              tension: 0.4
+            },
+            {
+              label: 'Historical Average %',
+              data: historical,
+              borderColor: '#818cf8',
+              borderDash: [4, 4],
+              fill: false,
+              tension: 0.4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(51, 65, 85, 0.3)' } },
+            y: { min: 0, max: 100, ticks: { color: '#64748b' }, grid: { color: 'rgba(51, 65, 85, 0.3)' } }
+          }
+        }
+      });
+    }
+
+    async function submitLiveCheckin() {
+      const resName = document.getElementById('ingest-venue-select').value;
+      const userId = document.getElementById('ingest-user-id').value;
+      const statusEl = document.getElementById('ingest-status');
+      
+      statusEl.innerText = "Sending check-in...";
+      
+      try {
+        const response = await fetch(API_BASE + '/api/ingest/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            resource_name: resName,
+            duration_min: 60,
+            source: 'live_demo_ui'
+          })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+          statusEl.innerText = `Check-in recorded! Stamped at ${data.stamped_checkin_time.substring(11, 16)}`;
+          statusEl.className = "text-[11px] text-center font-mono text-emerald-400 font-bold";
+          setTimeout(refreshData, 500);
+        } else {
+          statusEl.innerText = "Failed: " + data.detail;
+          statusEl.className = "text-[11px] text-center font-mono text-rose-400";
+        }
+      } catch (err) {
+        statusEl.innerText = "API Error: Server offline?";
+        statusEl.className = "text-[11px] text-center font-mono text-rose-400";
+      }
+    }
+
+    async function showGroundTruthModal() {
+      const modal = document.getElementById('gt-modal');
+      const content = document.getElementById('gt-content');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      
+      const data = await fetchAPI('/api/events/ground-truth');
+      if (data && data.events) {
+        content.innerHTML = '<pre>' + JSON.stringify(data.events, null, 2) + '</pre>';
+      } else {
+        content.innerText = "Failed to load ground truth anomalies.";
+      }
+    }
+
+    function hideGroundTruthModal() {
+      const modal = document.getElementById('gt-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    // Initial load
+    refreshData();
+  </script>
+</body>
+</html>
