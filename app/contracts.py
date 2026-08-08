@@ -102,10 +102,13 @@ class ForecastSlot:
     """Predicted occupancy for a resource at a specific time."""
     resource_name: str
     time_slot: str            # "HH:MM" format
-    predicted_occupancy_pct: float
+    predicted_occupancy_pct: float   # observed (reroute-capped) forecast
     predicted_status: str     # StatusBucket value
     confidence: float         # 0.0 - 1.0
     date: str                 # "YYYY-MM-DD"
+    predicted_demand_pct: float = 0.0  # reroute-corrected true demand
+    cause: Optional[str] = None        # anomaly label or None
+    is_cold_start: bool = False        # True if fallback was used
 
 
 # ─── Layer 3 → Layer 4/5: Personalization output ────────────────────────
