@@ -229,7 +229,26 @@ def ask_campus_copilot(payload: AskQueryRequest):
     }
 
 
-from app.personalization import generate_user_recommendations
+from app.personalization import generate_user_recommendations, run_greedy_load_balancer
+
+@router.get("/allocate")
+def get_campus_wide_load_balancing():
+    """
+    Layer 3 Campus-Wide Load Balancing Endpoint:
+    Runs greedy route optimization over all predicted congestion hotspots.
+    """
+    allocations, unallocated = run_greedy_load_balancer(threshold=0.85)
+    total = len(allocations) + len(unallocated)
+    rate = (len(allocations) / total * 100) if total > 0 else 0
+    return {
+        "status": "success",
+        "threshold": 0.85,
+        "users_considered": total,
+        "allocated_users": len(allocations),
+        "unallocated_users": len(unallocated),
+        "success_rate_pct": round(rate, 2),
+        "sample_allocations": allocations[:20]
+    }
 
 @router.get("/report/daily/{user_id}")
 def get_daily_user_report(user_id: str):
