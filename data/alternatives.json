@@ -1,0 +1,142 @@
+[
+  {
+    "alt_id": 1,
+    "original_resource": "Main Library",
+    "alt_type": "time_shift",
+    "alt_resource": "Main Library",
+    "original_peak_time": "17:00",
+    "suggested_time": "17:00\u219215:30",
+    "capacity_relief": "moderate",
+    "priority": 2
+  },
+  {
+    "alt_id": 2,
+    "original_resource": "Main Library",
+    "alt_type": "time_shift",
+    "alt_resource": "Main Library",
+    "original_peak_time": "17:00",
+    "suggested_time": "17:00\u219220:00",
+    "capacity_relief": "high",
+    "priority": 3
+  },
+  {
+    "alt_id": 3,
+    "original_resource": "Main Library",
+    "alt_type": "location_shift",
+    "alt_resource": "Science Library",
+    "original_peak_time": "17:00",
+    "suggested_time": "same",
+    "capacity_relief": "high",
+    "priority": 1
+  },
+  {
+    "alt_id": 4,
+    "original_resource": "Gymnasium",
+    "alt_type": "time_shift",
+    "alt_resource": "Gymnasium",
+    "original_peak_time": "19:00",
+    "suggested_time": "19:00\u219218:00",
+    "capacity_relief": "moderate",
+    "priority": 2
+  },
+  {
+    "alt_id": 5,
+    "original_resource": "Gymnasium",
+    "alt_type": "time_shift",
+    "alt_resource": "Gymnasium",
+    "original_peak_time": "19:00",
+    "suggested_time": "19:00\u219206:30",
+    "capacity_relief": "high",
+    "priority": 3
+  },
+  {
+    "alt_id": 6,
+    "original_resource": "Gymnasium",
+    "alt_type": "location_shift",
+    "alt_resource": "Indoor Sports Complex",
+    "original_peak_time": "19:00",
+    "suggested_time": "same",
+    "capacity_relief": "high",
+    "priority": 1
+  },
+  {
+    "alt_id": 7,
+    "original_resource": "Central Cafeteria",
+    "alt_type": "time_shift",
+    "alt_resource": "Central Cafeteria",
+    "original_peak_time": "12:30",
+    "suggested_time": "12:30\u219211:30",
+    "capacity_relief": "moderate",
+    "priority": 2
+  },
+  {
+    "alt_id": 8,
+    "original_resource": "Central Cafeteria",
+    "alt_type": "time_shift",
+    "alt_resource": "Central Cafeteria",
+    "original_peak_time": "12:30",
+    "suggested_time": "12:30\u219213:30",
+    "capacity_relief": "moderate",
+    "priority": 3
+  },
+  {
+    "alt_id": 9,
+    "original_resource": "Central Cafeteria",
+    "alt_type": "location_shift",
+    "alt_resource": "Food Court",
+    "original_peak_time": "12:30",
+    "suggested_time": "same",
+    "capacity_relief": "high",
+    "priority": 1
+  },
+  {
+    "alt_id": 10,
+    "original_resource": "Computer Lab A",
+    "alt_type": "location_shift",
+    "alt_resource": "Computer Lab B",
+    "original_peak_time": "15:00",
+    "suggested_time": "same",
+    "capacity_relief": "high",
+    "priority": 1
+  },
+  {
+    "alt_id": 11,
+    "original_resource": "Computer Lab A",
+    "alt_type": "time_shift",
+    "alt_resource": "Computer Lab A",
+    "original_peak_time": "15:00",
+    "suggested_time": "15:00\u219209:00",
+    "capacity_relief": "high",
+    "priority": 2
+  },
+  {
+    "alt_id": 12,
+    "original_resource": "Student Center",
+    "alt_type": "time_shift",
+    "alt_resource": "Student Center",
+    "original_peak_time": "13:00",
+    "suggested_time": "13:00\u219210:00",
+    "capacity_relief": "moderate",
+    "priority": 2
+  },
+  {
+    "alt_id": 13,
+    "original_resource": "Student Center",
+    "alt_type": "location_shift",
+    "alt_resource": "WiFi Zone North",
+    "original_peak_time": "13:00",
+    "suggested_time": "same",
+    "capacity_relief": "high",
+    "priority": 1
+  },
+  {
+    "alt_id": 14,
+    "original_resource": "WiFi Zone North",
+    "alt_type": "location_shift",
+    "alt_resource": "WiFi Zone South",
+    "original_peak_time": "14:00",
+    "suggested_time": "same",
+    "capacity_relief": "moderate",
+    "priority": 1
+  }
+]

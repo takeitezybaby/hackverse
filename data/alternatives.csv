@@ -1,0 +1,15 @@
+alt_id,original_resource,alt_type,alt_resource,original_peak_time,suggested_time,capacity_relief,priority
+1,Main Library,time_shift,Main Library,17:00,17:00→15:30,moderate,2
+2,Main Library,time_shift,Main Library,17:00,17:00→20:00,high,3
+3,Main Library,location_shift,Science Library,17:00,same,high,1
+4,Gymnasium,time_shift,Gymnasium,19:00,19:00→18:00,moderate,2
+5,Gymnasium,time_shift,Gymnasium,19:00,19:00→06:30,high,3
+6,Gymnasium,location_shift,Indoor Sports Complex,19:00,same,high,1
+7,Central Cafeteria,time_shift,Central Cafeteria,12:30,12:30→11:30,moderate,2
+8,Central Cafeteria,time_shift,Central Cafeteria,12:30,12:30→13:30,moderate,3
+9,Central Cafeteria,location_shift,Food Court,12:30,same,high,1
+10,Computer Lab A,location_shift,Computer Lab B,15:00,same,high,1
+11,Computer Lab A,time_shift,Computer Lab A,15:00,15:00→09:00,high,2
+12,Student Center,time_shift,Student Center,13:00,13:00→10:00,moderate,2
+13,Student Center,location_shift,WiFi Zone North,13:00,same,high,1
+14,WiFi Zone North,location_shift,WiFi Zone South,14:00,same,moderate,1
