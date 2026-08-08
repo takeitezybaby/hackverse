@@ -63,12 +63,13 @@ def _load_logs() -> List[dict]:
     return _logs_cache
 
 
-def get_current_state(resource_name: str, at_time: Optional[str] = None) -> Optional[ResourceState]:
+def get_current_state(resource_name: str, at_time: Optional[str] = None, db_counts: Optional[Dict[str, int]] = None) -> Optional[ResourceState]:
     """Get the most recent (or specific-time) state of a resource.
     
     Args:
         resource_name: Display name of the resource.
         at_time: Optional ISO timestamp. If None, returns the latest reading.
+        db_counts: Optional pre-queried map of resource_name -> live checkin count.
     """
     logs = _load_logs()
     resource_logs = [r for r in logs if r['resource_name'] == resource_name]
@@ -105,26 +106,30 @@ def get_current_state(resource_name: str, at_time: Optional[str] = None) -> Opti
     current_occ = best['current_occupancy']
     cap = best['max_capacity']
 
-    # Dynamically check SQLite DB for any newly ingested live check-ins
-    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'campus_twin.db')
-    if os.path.exists(db_path):
-        try:
-            import sqlite3
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            eval_time = best['timestamp'].replace('Z', '')
-            cursor.execute("""
-                SELECT count(*) FROM user_checkins 
-                WHERE resource_name = ? 
-                  AND checkin_time <= ? 
-                  AND checkout_time > ?
-            """, (resource_name, eval_time, eval_time))
-            row = cursor.fetchone()
-            if row and row[0] > 0:
-                current_occ = max(current_occ, row[0])
-            conn.close()
-        except Exception:
-            pass
+    # Dynamically check live check-ins
+    if db_counts is not None:
+        if resource_name in db_counts:
+            current_occ = max(current_occ, db_counts[resource_name])
+    else:
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'campus_twin.db')
+        if os.path.exists(db_path):
+            try:
+                import sqlite3
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                eval_time = best['timestamp'].replace('Z', '')
+                cursor.execute("""
+                    SELECT count(*) FROM user_checkins 
+                    WHERE resource_name = ? 
+                      AND checkin_time <= ? 
+                      AND checkout_time > ?
+                """, (resource_name, eval_time, eval_time))
+                row = cursor.fetchone()
+                if row and row[0] > 0:
+                    current_occ = max(current_occ, row[0])
+                conn.close()
+            except Exception:
+                pass
 
     occ_pct = (current_occ / cap * 100.0) if cap > 0 else 0.0
 
@@ -141,10 +146,30 @@ def get_current_state(resource_name: str, at_time: Optional[str] = None) -> Opti
 
 
 def get_all_current_states(at_time: Optional[str] = None) -> List[ResourceState]:
-    """Get the live state of every resource at once."""
+    """Get the live state of every resource at once using a single batched DB query."""
+    # Batch query SQLite for all 12 venues at once
+    db_counts = {}
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'campus_twin.db')
+    if os.path.exists(db_path):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            eval_time = at_time.replace('Z', '') if at_time else '2023-09-12T19:00:00'
+            cursor.execute("""
+                SELECT resource_name, count(*) FROM user_checkins 
+                WHERE checkin_time <= ? AND checkout_time > ?
+                GROUP BY resource_name
+            """, (eval_time, eval_time))
+            for row in cursor.fetchall():
+                db_counts[row[0]] = row[1]
+            conn.close()
+        except Exception:
+            pass
+
     states = []
     for slug, info in RESOURCES.items():
-        state = get_current_state(info['name'], at_time)
+        state = get_current_state(info['name'], at_time, db_counts=db_counts)
         if state:
             states.append(state)
     return states

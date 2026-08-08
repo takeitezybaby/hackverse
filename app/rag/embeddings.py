@@ -38,6 +38,7 @@ class GraniteEmbedder:
     """
 
     def __init__(self) -> None:
+        self.using_fallback = False
         try:
             self.client = ollama.Client(host=OLLAMA_HOST)
         except Exception:
@@ -46,13 +47,14 @@ class GraniteEmbedder:
 
     def _fallback_vector(self, text: str) -> list[float]:
         """Generate a deterministic 768-dim pseudo-vector from text hash when LLM daemon is offline."""
+        if not self.using_fallback:
+            print(f"[WARNING] Local Ollama daemon unreachable at {OLLAMA_HOST}. Engaging deterministic fallback embedder.")
+            self.using_fallback = True
         seed = int(hashlib.md5(text.encode('utf-8')).hexdigest(), 16)
-        # Generate pseudo-vector
         vec = []
         for i in range(EMBEDDING_DIM):
             val = ((seed + i * 10007) % 2000 - 1000) / 1000.0
             vec.append(val)
-        # Normalize
         norm = sum(v * v for v in vec) ** 0.5
         return [v / (norm or 1.0) for v in vec]
 
