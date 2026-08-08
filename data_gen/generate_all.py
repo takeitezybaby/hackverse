@@ -22,9 +22,9 @@ def main():
     scripts = [
         ('Timetable Generator', os.path.join(gen_dir, 'timetable_gen.py')),
         ('User Generator', os.path.join(gen_dir, 'user_gen.py')),
-        ('Resource Logs Generator', os.path.join(gen_dir, 'resource_logs_gen.py')),
         ('Alternatives Generator', os.path.join(gen_dir, 'alternatives_gen.py')),
         ('Check-in Generator', os.path.join(gen_dir, 'checkin_gen.py')),
+        ('Occupancy from Checkins', os.path.join(gen_dir, 'occupancy_from_checkins.py')),
         ('Daily Snapshots Generator', os.path.join(gen_dir, 'daily_snapshots_gen.py')),
     ]
     
