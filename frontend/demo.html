@@ -46,10 +46,13 @@
     </div>
 
     <!-- Right Clock & Score -->
-    <div class="flex items-center space-x-4 text-xs font-mono">
+    <div class="flex items-center space-x-3 text-xs font-mono">
+      <button onclick="scrollToCopilot()" class="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-all shadow-md flex items-center gap-1.5">
+        <i class="fa-solid fa-robot"></i> Copilot Chat
+      </button>
       <div class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center space-x-2 text-cyan-400">
         <i class="fa-solid fa-clock text-cyan-500"></i>
-        <span>Reference Clock: <strong id="clock-display" class="text-white">2023-09-12 19:00</strong></span>
+        <span>Clock: <strong id="clock-display" class="text-white">2023-09-12 19:00</strong></span>
       </div>
       <div class="px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-emerald-400 flex items-center space-x-2">
         <i class="fa-solid fa-[#10b981] fa-shield-halved"></i>
@@ -163,13 +166,26 @@
       </div>
 
       <!-- Granite Copilot Panel -->
-      <div class="glass-card p-5 rounded-2xl space-y-3">
-        <h3 class="text-sm font-bold text-white flex items-center gap-2">
-          <i class="fa-solid fa-robot text-indigo-400"></i> AI Copilot (IBM Granite)
-        </h3>
-        <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-2 text-slate-300">
-          <p>💬 <strong>User:</strong> "Why is Computer Lab A empty today?"</p>
-          <p class="text-cyan-300">🤖 <strong>Granite:</strong> "Computer Lab A has an active infrastructure outage on Sep 10. 1,290 student check-ins have been rerouted to Lab B."</p>
+      <div id="copilot-panel" class="glass-card p-5 rounded-2xl space-y-3">
+        <div class="flex justify-between items-center">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-robot text-cyan-400"></i> AI Copilot (IBM Granite RAG)
+          </h3>
+          <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">POST /api/ask</span>
+        </div>
+        
+        <div id="chat-messages" class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-2.5 text-slate-300 max-h-48 overflow-y-auto">
+          <div class="p-2 rounded bg-slate-850 border border-slate-800">
+            <p class="text-cyan-300 font-bold text-[11px]">🤖 Copilot:</p>
+            <p class="text-[11px] text-slate-300">Hello! Ask me anything about campus congestion, venue forecasts, or daily schedules.</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2 pt-1">
+          <input type="text" id="copilot-input" placeholder="Is it a good time to study at Main Library?" class="flex-1 bg-slate-900 border border-slate-700 text-xs rounded-xl p-2.5 text-white focus:outline-none focus:border-cyan-500" onkeydown="if(event.key==='Enter') sendCopilotQuery()">
+          <button onclick="sendCopilotQuery()" class="px-3 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs transition-all shadow-md">
+            <i class="fa-solid fa-paper-plane" id="copilot-send-icon"></i>
+          </button>
         </div>
       </div>
 
@@ -374,10 +390,61 @@
       }
     }
 
-    function hideGroundTruthModal() {
-      const modal = document.getElementById('gt-modal');
-      modal.classList.add('hidden');
-      modal.classList.remove('flex');
+    function scrollToCopilot() {
+      const el = document.getElementById('copilot-panel');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-cyan-400');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-cyan-400'), 2000);
+        document.getElementById('copilot-input').focus();
+      }
+    }
+
+    async function sendCopilotQuery() {
+      const inputEl = document.getElementById('copilot-input');
+      const chatEl = document.getElementById('chat-messages');
+      const sendIcon = document.getElementById('copilot-send-icon');
+      const query = inputEl.value.trim();
+
+      if (!query) return;
+
+      // Add user message
+      chatEl.innerHTML += `
+        <div class="p-2 rounded bg-slate-800 border border-slate-700 text-right">
+          <p class="text-indigo-300 font-bold text-[11px]">👤 You:</p>
+          <p class="text-[11px] text-slate-200">${query}</p>
+        </div>
+      `;
+      inputEl.value = '';
+      chatEl.scrollTop = chatEl.scrollHeight;
+
+      // Add loading state
+      sendIcon.className = "fa-solid fa-spinner fa-spin";
+
+      try {
+        const response = await fetch(API_BASE + '/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query, user_id: 'u_0042' })
+        });
+        const data = await response.json();
+
+        chatEl.innerHTML += `
+          <div class="p-2 rounded bg-cyan-950/60 border border-cyan-800">
+            <p class="text-cyan-300 font-bold text-[11px]">🤖 IBM Granite RAG:</p>
+            <p class="text-[11px] text-slate-200">${data.answer || 'No response.'}</p>
+          </div>
+        `;
+      } catch (err) {
+        chatEl.innerHTML += `
+          <div class="p-2 rounded bg-rose-950/60 border border-rose-800 text-rose-300 text-[11px]">
+            Error calling RAG backend: ${err.message}
+          </div>
+        `;
+      } finally {
+        sendIcon.className = "fa-solid fa-paper-plane";
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
     }
 
     // Initial load
