@@ -20,7 +20,25 @@ try:
 
     print("\n2. Executing Throwaway Warmup Query to Ollama Granite...")
     warmup_start = time.time()
-    res = rag.answer_question("Is Gymnasium busy right now?")
+    
+    # Connection retry loop (up to 5 attempts to handle daemon race conditions)
+    res = None
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            res = rag.answer_question("Is Gymnasium busy right now?")
+            if not res.get("is_fallback"):
+                print(f"   [OK] Ollama connected on attempt {attempt}/{max_retries}!")
+                break
+        except Exception:
+            pass
+        if attempt < max_retries:
+            print(f"   [WAIT] Ollama daemon initializing... retrying attempt {attempt}/{max_retries} in 1.5s")
+            time.sleep(1.5)
+
+    if res is None:
+        res = rag.answer_question("Is Gymnasium busy right now?")
+
     warmup_time = (time.time() - warmup_start) * 1000
 
     print(f"   [OK] Model Response Generated in {warmup_time:.1f} ms")
