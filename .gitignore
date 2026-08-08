@@ -12,11 +12,13 @@ dist/
 build/
 .eggs/
 
-# IDE
+# IDE & Tooling
 .vscode/
 .idea/
+.aistudio/
 *.swp
 *.swo
+*.log
 
 # OS
 .DS_Store
@@ -38,4 +40,4 @@ frontend/yarn-error.log*
 frontend/pnpm-debug.log*
 frontend/.env.local
 frontend/.env.*.local
-
+frontend/assets/.aistudio/
