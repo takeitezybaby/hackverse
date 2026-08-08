@@ -40,6 +40,16 @@ def root_forecast_alias():
     """Alias for /api/forecast-frontend so React UI fetches work at root level."""
     return routes.get_frontend_formatted_forecast()
 
+@app.get("/report/daily/{user_id}", tags=["Frontend Alias"])
+def root_report_alias(user_id: str):
+    """Alias for /api/report/daily/{user_id} so React UI fetches work at root level."""
+    return routes.get_daily_user_report(user_id)
+
+@app.post("/ask", tags=["Frontend Alias"])
+def root_ask_alias(payload: routes.AskQueryRequest):
+    """Alias for /api/ask so React UI chat works at root level."""
+    return routes.ask_campus_copilot(payload)
+
 @app.get("/health", tags=["Health"])
 def health_check():
     """Health check endpoint returning server status, database state, and reference clock."""
