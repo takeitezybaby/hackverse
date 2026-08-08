@@ -34,6 +34,11 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT, start TEXT,
             end TEXT, affected_resource TEXT, affected_course TEXT
         );
+        CREATE TABLE IF NOT EXISTS forecasts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, resource_name TEXT, date TEXT,
+            time_slot TEXT, predicted_occupancy_pct REAL, predicted_demand_pct REAL,
+            predicted_status TEXT, confidence REAL, cause TEXT, is_cold_start BOOLEAN
+        );
     ''')
     conn.commit()
     conn.close()

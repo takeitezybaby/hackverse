@@ -331,6 +331,68 @@ def generate_daily_forecast(resource_name: str, target_date: str) -> List[Foreca
     return forecasts
 
 
+def cache_forecasts_to_db(db_path: Optional[str] = None, target_date: Optional[str] = None):
+    """
+    Pre-computes and caches forecasts for all resources into the SQLite database.
+    If target_date is specified, caches that date. Otherwise, caches all 30 days of the dataset.
+    """
+    import sqlite3
+    if db_path is None:
+        db_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'data', 'campus_twin.db'
+        )
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # Ensure table exists
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS forecasts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, resource_name TEXT, date TEXT,
+            time_slot TEXT, predicted_occupancy_pct REAL, predicted_demand_pct REAL,
+            predicted_status TEXT, confidence REAL, cause TEXT, is_cold_start BOOLEAN
+        );
+    ''')
+    
+    dates_to_cache = []
+    if target_date:
+        dates_to_cache.append(target_date)
+    else:
+        # Cache for all 30 days in dataset
+        start = START_DATE
+        for d in range(NUM_DAYS):
+            curr = start + timedelta(days=d)
+            dates_to_cache.append(curr.strftime('%Y-%m-%d'))
+            
+    resources = list(RESOURCES.values())
+    total_slots = 0
+    
+    for date_str in dates_to_cache:
+        # Clear existing entries for this date to avoid duplicates
+        cursor.execute("DELETE FROM forecasts WHERE date = ?", (date_str,))
+        
+        for res_info in resources:
+            res_name = res_info['name']
+            daily = generate_daily_forecast(res_name, date_str)
+            for slot in daily:
+                cursor.execute('''
+                    INSERT INTO forecasts (
+                        resource_name, date, time_slot, predicted_occupancy_pct,
+                        predicted_demand_pct, predicted_status, confidence, cause, is_cold_start
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    slot.resource_name, slot.date, slot.time_slot,
+                    slot.predicted_occupancy_pct, slot.predicted_demand_pct,
+                    slot.predicted_status, slot.confidence, slot.cause, slot.is_cold_start
+                ))
+                total_slots += 1
+                
+    conn.commit()
+    conn.close()
+    print(f"Successfully cached {total_slots} forecast slots across {len(dates_to_cache)} days in SQLite DB.")
+
+
 # ── CLI Test ─────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     print("=== Layer 2 Forecast Engine — Smoke Test ===\n")
