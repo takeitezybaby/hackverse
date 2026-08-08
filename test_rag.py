@@ -1,5 +1,5 @@
 import os
-from rag import CampusRAG
+from app.rag import CampusRAG
 
 # Ensure local Ollama host is reachable
 os.environ["OLLAMA_HOST"] = "http://localhost:11434"

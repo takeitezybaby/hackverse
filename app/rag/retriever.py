@@ -16,7 +16,7 @@ import numpy as np
 import faiss
 
 from .embeddings import GraniteEmbedder, EMBEDDING_DIM
-from llm import OllamaLLMClient
+from app.llm.client import OllamaLLMClient
 
 
 class CampusRAG:
