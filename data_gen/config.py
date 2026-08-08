@@ -3,28 +3,29 @@ from datetime import datetime
 # Global Constants
 START_DATE = datetime(2023, 9, 1)
 NUM_DAYS = 30
-NUM_USERS = 200
+NUM_USERS = 1500
 RANDOM_SEED = 42
 
 # Checkin Generation Constants
 REROUTE_THRESHOLD_PCT = 90
-SKIP_PROBABILITY = 0.20
-UNPLANNED_PROBABILITY = 0.10
+SKIP_PROBABILITY = 0.15          # lowered from 0.20 so more visits happen
+UNPLANNED_PROBABILITY = 0.12     # slightly higher spontaneous visits
+BUCKET_MINUTES = 15
 
-# Resource Capacities
+# Resource Capacities (lowered for smaller venues to create realistic congestion)
 RESOURCE_CAPACITIES = {
-    'Main Library': 300,
-    'Science Library': 120,
-    'Central Cafeteria': 250,
-    'Food Court': 200,
-    'Gymnasium': 80,
-    'Indoor Sports Complex': 100,
-    'Student Center': 150,
-    'Computer Lab A': 60,
-    'Computer Lab B': 60,
-    'WiFi Zone - Academic Block': 500,
-    'WiFi Zone - Library': 200,
-    'WiFi Zone - Cafeteria': 300
+    'Main Library': 200,
+    'Science Library': 80,
+    'Central Cafeteria': 180,
+    'Food Court': 120,
+    'Gymnasium': 50,
+    'Indoor Sports Complex': 60,
+    'Student Center': 100,
+    'Computer Lab A': 35,
+    'Computer Lab B': 35,
+    'WiFi Zone - Academic Block': 400,
+    'WiFi Zone - Library': 150,
+    'WiFi Zone - Cafeteria': 200
 }
 
 # Anomaly Configurations
@@ -50,3 +51,31 @@ ANOMALIES = {
         'type': 'class_cancellation'
     }
 }
+
+# Peak hour definitions (used by user_gen to concentrate patterns)
+PEAK_HOURS = {
+    'Library':    {'primary': [(16, 20)], 'secondary': [(10, 12)]},
+    'Cafeteria':  {'primary': [(12, 13)], 'secondary': [(18, 19)]},
+    'Food':       {'primary': [(12, 13)], 'secondary': [(18, 20)]},
+    'Gym':        {'primary': [(17, 20)], 'secondary': [(6, 8)]},
+    'Sports':     {'primary': [(17, 19)], 'secondary': [(7, 9)]},
+    'Lab':        {'primary': [(14, 18)], 'secondary': [(10, 12)]},
+    'Student':    {'primary': [(15, 19)], 'secondary': [(11, 13)]},
+    'WiFi':       {'primary': [(10, 17)], 'secondary': [(18, 21)]},
+}
+
+# Popular resources (weighted selection for routine patterns)
+POPULAR_RESOURCES = [
+    ('Main Library', 5),
+    ('Central Cafeteria', 5),
+    ('Gymnasium', 4),
+    ('Computer Lab A', 4),
+    ('Computer Lab B', 3),
+    ('Student Center', 3),
+    ('Food Court', 3),
+    ('Science Library', 3),
+    ('Indoor Sports Complex', 2),
+    ('WiFi Zone - Academic Block', 2),
+    ('WiFi Zone - Library', 1),
+    ('WiFi Zone - Cafeteria', 1),
+]

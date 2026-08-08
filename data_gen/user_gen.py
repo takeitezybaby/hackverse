@@ -10,6 +10,47 @@ def time_add_mins(time_str, add_mins):
     total = h * 60 + m + add_mins
     return f"{(total // 60) % 24:02d}:{total % 60:02d}"
 
+def pick_peak_time(resource_name):
+    """Pick a realistic time for a resource based on peak hour definitions."""
+    for keyword, hours in config.PEAK_HOURS.items():
+        if keyword in resource_name:
+            # 75% chance of primary peak, 25% secondary
+            if random.random() < 0.75:
+                start_h, end_h = random.choice(hours['primary'])
+            else:
+                start_h, end_h = random.choice(hours['secondary'])
+            h = random.randint(start_h, end_h)
+            m = random.choice([0, 15, 30, 45])
+            return f"{h:02d}:{m:02d}"
+    # Fallback
+    return f"{random.randint(9, 18):02d}:00"
+
+def pick_duration(resource_name):
+    """Pick a realistic visit duration based on resource type."""
+    if 'Library' in resource_name:
+        return random.choice([60, 90, 120, 150, 180])
+    elif 'Gym' in resource_name or 'Sports' in resource_name:
+        return random.choice([45, 60, 75, 90])
+    elif 'Cafeteria' in resource_name or 'Food' in resource_name:
+        return random.choice([25, 30, 40, 45, 60])
+    elif 'Lab' in resource_name:
+        return random.choice([45, 60, 90, 120])
+    elif 'Student' in resource_name:
+        return random.choice([30, 45, 60, 90])
+    else:
+        return random.choice([30, 45, 60])
+
+def weighted_resource_sample(n):
+    """Pick n unique resources using popularity weights from config."""
+    pool = []
+    for res, weight in config.POPULAR_RESOURCES:
+        pool.extend([res] * weight)
+    chosen = set()
+    while len(chosen) < n and pool:
+        pick = random.choice(pool)
+        chosen.add(pick)
+    return list(chosen)
+
 def generate_users():
     random.seed(config.RANDOM_SEED)
     Faker.seed(config.RANDOM_SEED)
@@ -33,75 +74,68 @@ def generate_users():
     
     departments = ['CS', 'EE', 'ME', 'CE', 'Math', 'Physics', 'Chemistry', 'Bio', 'MBA', 'Economics']
     
-    # Simple mapping of buildings to likely nearby resources
+    # Building -> nearby resources (multiple options, weighted toward popular ones)
     building_resource_map = {
-        'Main Academic Block': ['Computer Lab A', 'Computer Lab B', 'WiFi Zone - Academic Block'],
-        'Science Complex': ['Science Library', 'Computer Lab A'],
-        'Engineering Tower': ['Computer Lab B', 'WiFi Zone - Academic Block'],
-        'Management Building': ['Student Center', 'Central Cafeteria'],
-        'Central Library Building': ['Main Library', 'WiFi Zone - Library']
+        'Main Academic Block': ['Computer Lab A', 'Computer Lab B', 'Central Cafeteria', 'WiFi Zone - Academic Block'],
+        'Science Complex': ['Science Library', 'Computer Lab A', 'Main Library'],
+        'Engineering Tower': ['Computer Lab B', 'Computer Lab A', 'WiFi Zone - Academic Block'],
+        'Management Building': ['Student Center', 'Central Cafeteria', 'Food Court'],
+        'Central Library Building': ['Main Library', 'Science Library', 'WiFi Zone - Library']
     }
-    
-    resources_pool = list(config.RESOURCE_CAPACITIES.keys())
     
     users = []
     
     for i in range(1, config.NUM_USERS + 1):
-        user_id = f"u_{i:03d}"
+        user_id = f"u_{i:04d}"
         name = fake.name()
         dept = random.choice(departments)
         year = random.randint(1, 4)
         
-        # Assign courses
+        # Assign courses (4-6)
         num_courses = random.randint(4, 6)
         enrolled_courses = random.sample(unique_course_ids, min(num_courses, len(unique_course_ids)))
         
         usual_patterns = {}
         
-        # 1. Generate post_class patterns (causal link)
+        # 1. Post-class patterns (80% chance per course — high to create class-driven waves)
         for cid in enrolled_courses:
-            # 65% chance this course creates a post_class routine
-            if random.random() < 0.65:
+            if random.random() < 0.80:
                 course = course_lookup[cid]
                 building = course.get('building', 'Main Academic Block')
-                possible_resources = building_resource_map.get(building, resources_pool)
+                possible_resources = building_resource_map.get(building, ['Central Cafeteria', 'Main Library'])
                 res = random.choice(possible_resources)
                 
-                # Setup 10-20 mins after class ends
-                usual_time = time_add_mins(course['end_time'], random.randint(10, 20))
-                duration = random.choice([30, 45, 60, 90])
+                usual_time = time_add_mins(course['end_time'], random.randint(5, 20))
+                duration = pick_duration(res)
                 
-                # Use a composite key so a resource can have multiple patterns (e.g. routine vs post_class)
+                # Use days from the course schedule
+                days = course['day_of_week'] if isinstance(course['day_of_week'], list) else [course['day_of_week']]
+                
                 pattern_key = f"{res}_post_{cid}"
                 usual_patterns[pattern_key] = {
                     "resource": res,
-                    "days": course['day_of_week'],
+                    "days": days,
                     "usual_time": usual_time,
                     "duration_min": duration,
                     "source": "post_class",
                     "linked_course": cid
                 }
         
-        # 2. Generate freeform routine patterns (~35% of total patterns conceptualized)
-        num_routine = random.randint(1, 3)
-        chosen_resources = random.sample(resources_pool, num_routine)
+        # 2. Routine patterns (2-4 per user, using weighted resource selection)
+        num_routine = random.randint(2, 4)
+        chosen_resources = weighted_resource_sample(num_routine)
         for res in chosen_resources:
-            days = random.sample(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], random.randint(2, 5))
+            # Weekday-heavy: 3-5 weekdays for most patterns
+            num_days = random.randint(3, 5)
+            days = random.sample(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], min(num_days, 5))
+            # 20% chance of including a weekend day
+            if random.random() < 0.20:
+                days.append(random.choice(['Sat', 'Sun']))
             
-            if 'Library' in res:
-                usual_time = f"{random.randint(16, 21):02d}:00"
-                duration = random.choice([60, 90, 120, 180])
-            elif 'Gym' in res or 'Sports' in res:
-                usual_time = random.choice([f"{random.randint(6, 8):02d}:00", f"{random.randint(17, 20):02d}:00"])
-                duration = random.choice([45, 60, 90])
-            elif 'Cafeteria' in res or 'Food' in res:
-                usual_time = random.choice(["08:30", "12:30", "19:00"])
-                duration = random.choice([30, 45, 60])
-            else:
-                usual_time = f"{random.randint(9, 16):02d}:00"
-                duration = random.choice([45, 60, 90])
+            usual_time = pick_peak_time(res)
+            duration = pick_duration(res)
                 
-            pattern_key = f"{res}_routine_{random.randint(100,999)}"
+            pattern_key = f"{res}_routine_{random.randint(1000,9999)}"
             usual_patterns[pattern_key] = {
                 "resource": res,
                 "days": days,
@@ -137,8 +171,14 @@ def generate_users():
                 row['enrolled_courses'] = json.dumps(row['enrolled_courses'])
                 row['usual_patterns'] = json.dumps(row['usual_patterns'])
                 writer.writerow(row)
-                
+
+    # Stats
+    total_patterns = sum(len(u['usual_patterns']) for u in users)
+    post_class_count = sum(1 for u in users for p in u['usual_patterns'].values() if p.get('source') == 'post_class')
+    routine_count = total_patterns - post_class_count
     print(f"Generated {len(users)} student profiles (seed={config.RANDOM_SEED}).")
+    print(f"  Total patterns: {total_patterns} (post_class: {post_class_count}, routine: {routine_count})")
+    print(f"  Avg patterns/user: {total_patterns/len(users):.1f}")
     print(f"Data saved to {json_path} and {csv_path}")
 
 if __name__ == "__main__":

@@ -24,9 +24,12 @@ def main():
         {'alt_id': 11, 'original_resource': 'Computer Lab A', 'alt_type': 'time_shift', 'alt_resource': 'Computer Lab A', 'original_peak_time': '15:00', 'suggested_time': '15:00→09:00', 'capacity_relief': 'high', 'priority': 2},
         
         {'alt_id': 12, 'original_resource': 'Student Center', 'alt_type': 'time_shift', 'alt_resource': 'Student Center', 'original_peak_time': '13:00', 'suggested_time': '13:00→10:00', 'capacity_relief': 'moderate', 'priority': 2},
-        {'alt_id': 13, 'original_resource': 'Student Center', 'alt_type': 'location_shift', 'alt_resource': 'WiFi Zone North', 'original_peak_time': '13:00', 'suggested_time': 'same', 'capacity_relief': 'high', 'priority': 1},
+        {'alt_id': 13, 'original_resource': 'Student Center', 'alt_type': 'location_shift', 'alt_resource': 'Food Court', 'original_peak_time': '13:00', 'suggested_time': 'same', 'capacity_relief': 'high', 'priority': 1},
         
-        {'alt_id': 14, 'original_resource': 'WiFi Zone North', 'alt_type': 'location_shift', 'alt_resource': 'WiFi Zone South', 'original_peak_time': '14:00', 'suggested_time': 'same', 'capacity_relief': 'moderate', 'priority': 1},
+        {'alt_id': 14, 'original_resource': 'Science Library', 'alt_type': 'location_shift', 'alt_resource': 'Main Library', 'original_peak_time': '17:00', 'suggested_time': 'same', 'capacity_relief': 'moderate', 'priority': 1},
+        {'alt_id': 15, 'original_resource': 'Computer Lab B', 'alt_type': 'location_shift', 'alt_resource': 'Computer Lab A', 'original_peak_time': '15:00', 'suggested_time': 'same', 'capacity_relief': 'high', 'priority': 1},
+        {'alt_id': 16, 'original_resource': 'Food Court', 'alt_type': 'location_shift', 'alt_resource': 'Central Cafeteria', 'original_peak_time': '12:30', 'suggested_time': 'same', 'capacity_relief': 'moderate', 'priority': 1},
+        {'alt_id': 17, 'original_resource': 'Indoor Sports Complex', 'alt_type': 'location_shift', 'alt_resource': 'Gymnasium', 'original_peak_time': '18:00', 'suggested_time': 'same', 'capacity_relief': 'moderate', 'priority': 1},
     ]
     
     json_path = os.path.join(data_dir, 'alternatives.json')

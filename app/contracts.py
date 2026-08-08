@@ -37,18 +37,18 @@ class StatusBucket(str, Enum):
 # ─── Resource Definition (shared across all layers) ─────────────────────
 
 RESOURCES = {
-    "main_library":              {"name": "Main Library",              "capacity": 300},
-    "science_library":           {"name": "Science Library",           "capacity": 120},
-    "central_cafeteria":         {"name": "Central Cafeteria",         "capacity": 250},
-    "food_court":                {"name": "Food Court",                "capacity": 200},
-    "gymnasium":                 {"name": "Gymnasium",                 "capacity": 80},
-    "indoor_sports_complex":     {"name": "Indoor Sports Complex",     "capacity": 100},
-    "student_center":            {"name": "Student Center",            "capacity": 150},
-    "computer_lab_a":            {"name": "Computer Lab A",            "capacity": 60},
-    "computer_lab_b":            {"name": "Computer Lab B",            "capacity": 60},
-    "wifi_zone_academic_block":  {"name": "WiFi Zone - Academic Block","capacity": 500},
-    "wifi_zone_library":         {"name": "WiFi Zone - Library",       "capacity": 200},
-    "wifi_zone_cafeteria":       {"name": "WiFi Zone - Cafeteria",     "capacity": 300},
+    "main_library":              {"name": "Main Library",              "capacity": 200},
+    "science_library":           {"name": "Science Library",           "capacity": 80},
+    "central_cafeteria":         {"name": "Central Cafeteria",         "capacity": 180},
+    "food_court":                {"name": "Food Court",                "capacity": 120},
+    "gymnasium":                 {"name": "Gymnasium",                 "capacity": 50},
+    "indoor_sports_complex":     {"name": "Indoor Sports Complex",     "capacity": 60},
+    "student_center":            {"name": "Student Center",            "capacity": 100},
+    "computer_lab_a":            {"name": "Computer Lab A",            "capacity": 35},
+    "computer_lab_b":            {"name": "Computer Lab B",            "capacity": 35},
+    "wifi_zone_academic_block":  {"name": "WiFi Zone - Academic Block","capacity": 400},
+    "wifi_zone_library":         {"name": "WiFi Zone - Library",       "capacity": 150},
+    "wifi_zone_cafeteria":       {"name": "WiFi Zone - Cafeteria",     "capacity": 200},
 }
 
 def get_resource_slug(name: str) -> str:
