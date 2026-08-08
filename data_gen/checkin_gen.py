@@ -17,7 +17,7 @@ def main():
     with open(users_file, 'r') as f:
         users = json.load(f)
         
-    start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date = datetime(2023, 9, 1, 0, 0, 0)
     checkins = []
     checkin_id = 1
     

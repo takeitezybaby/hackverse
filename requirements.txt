@@ -1,0 +1,30 @@
+# Campus Digital Twin — Project Dependencies
+# Run: pip install -r requirements.txt
+
+# Core
+fastapi==0.115.12
+uvicorn==0.34.3
+python-multipart==0.0.20
+
+# Data
+pandas==3.0.5
+numpy==2.5.1
+faker==40.36.0
+
+# Database
+aiosqlite==0.21.0
+
+# RAG + Embeddings
+faiss-cpu==1.11.0
+sentence-transformers==4.1.0
+
+# LLM (Ollama client)
+openai==1.82.0
+httpx==0.28.1
+
+# Frontend serving
+jinja2==3.1.6
+
+# Utilities
+python-dotenv==1.1.0
+pydantic==2.11.4
