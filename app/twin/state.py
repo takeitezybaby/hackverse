@@ -102,14 +102,40 @@ def get_current_state(resource_name: str, at_time: Optional[str] = None) -> Opti
     anomaly = get_anomaly_for_date(ts_dt)
     slug = resource_name.lower().replace(' ', '_').replace('-', '_').replace('__', '_')
 
+    current_occ = best['current_occupancy']
+    cap = best['max_capacity']
+
+    # Dynamically check SQLite DB for any newly ingested live check-ins
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'campus_twin.db')
+    if os.path.exists(db_path):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            eval_time = best['timestamp'].replace('Z', '')
+            cursor.execute("""
+                SELECT count(*) FROM user_checkins 
+                WHERE resource_name = ? 
+                  AND checkin_time <= ? 
+                  AND checkout_time > ?
+            """, (resource_name, eval_time, eval_time))
+            row = cursor.fetchone()
+            if row and row[0] > 0:
+                current_occ = max(current_occ, row[0])
+            conn.close()
+        except Exception:
+            pass
+
+    occ_pct = (current_occ / cap * 100.0) if cap > 0 else 0.0
+
     return ResourceState(
         resource_name=resource_name,
         resource_slug=slug,
         timestamp=best['timestamp'],
-        current_occupancy=best['current_occupancy'],
-        max_capacity=best['max_capacity'],
-        occupancy_pct=best['occupancy_pct'],
-        status=StatusBucket.from_pct(best['occupancy_pct']).value,
+        current_occupancy=current_occ,
+        max_capacity=cap,
+        occupancy_pct=round(occ_pct, 1),
+        status=StatusBucket.from_pct(occ_pct).value,
         active_anomaly=anomaly.get('type') if anomaly else None,
     )
 

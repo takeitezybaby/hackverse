@@ -5,6 +5,7 @@ START_DATE = datetime(2023, 9, 1)
 NUM_DAYS = 30
 NUM_USERS = 1500
 RANDOM_SEED = 42
+DEMO_NOW = datetime(2023, 9, 12, 19, 0, 0)  # Reference clock for live demo (Tuesday evening)
 
 # Checkin Generation Constants
 REROUTE_THRESHOLD_PCT = 90
