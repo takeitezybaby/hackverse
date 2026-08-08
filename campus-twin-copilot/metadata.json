@@ -1,0 +1,6 @@
+{
+  "name": "Campus Twin Copilot",
+  "description": "Digital Twin dashboard for campus resource load-balancing, live map congestion prediction, and AI schedule copilot.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

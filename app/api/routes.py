@@ -93,3 +93,65 @@ def get_ground_truth_events():
     with open(gt_path, 'r') as f:
         data = json.load(f)
     return data
+
+@router.get("/forecast-frontend")
+def get_frontend_formatted_forecast():
+    """Returns all 12 resources formatted for the React frontend (campus-twin-copilot)."""
+    states = get_all_current_states(at_time=DEMO_NOW.isoformat())
+    items = []
+    
+    cat_map = {
+        'library': 'library',
+        'gym': 'gym',
+        'sports': 'gym',
+        'cafeteria': 'cafeteria',
+        'food': 'cafeteria',
+        'center': 'student_center',
+        'lab': 'lab',
+        'wifi': 'lab'
+    }
+
+    for state in states:
+        slug = state.resource_slug
+        category = 'library'
+        for k, v in cat_map.items():
+            if k in slug:
+                category = v
+                break
+
+        # Generate 8 hourly forecast points for chart
+        hourly_fc = []
+        daily_slots = generate_daily_forecast(state.resource_name, "2023-09-12")
+        for hour in [8, 10, 12, 14, 16, 18, 20, 22]:
+            slot_time = f"{hour:02d}:00"
+            matching = next((s for s in daily_slots if s.time_slot == slot_time), None)
+            occ = matching.predicted_occupancy_pct if matching else 0.0
+            hourly_fc.append({
+                "time": slot_time,
+                "occupancy": int(occ),
+                "historicalAvg": int(occ * 0.9)
+            })
+
+        items.append({
+            "id": f"res_{slug}",
+            "name": state.resource_name,
+            "category": category,
+            "currentOccupancy": int(state.occupancy_pct),
+            "capacityMax": state.max_capacity,
+            "capacityCurrent": state.current_occupancy,
+            "trend": "up" if state.occupancy_pct > 50 else "steady",
+            "trendValue": f"{state.status.upper()} ({state.current_occupancy}/{state.max_capacity})",
+            "stateBucket": state.status,
+            "peakHours": "14:00 - 19:30",
+            "predictedOverflowTime": f"Active: {state.active_anomaly}" if state.active_anomaly else "None",
+            "wifiApNodesCount": 16,
+            "averageSpeedMbps": 250,
+            "noiseLevelDb": 45,
+            "floors": [
+                {"name": f"{state.resource_name} Main Section", "occupancy": int(state.occupancy_pct), "availableSeats": max(0, state.max_capacity - state.current_occupancy)}
+            ],
+            "hourlyForecast": hourly_fc
+        })
+        
+    return items
+

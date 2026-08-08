@@ -35,6 +35,11 @@ app.add_middleware(
 app.include_router(ingest.router, prefix="/api")
 app.include_router(routes.router, prefix="/api")
 
+@app.get("/forecast", tags=["Frontend Alias"])
+def root_forecast_alias():
+    """Alias for /api/forecast-frontend so React UI fetches work at root level."""
+    return routes.get_frontend_formatted_forecast()
+
 @app.get("/health", tags=["Health"])
 def health_check():
     """Health check endpoint returning server status, database state, and reference clock."""
