@@ -209,59 +209,85 @@ def ask_campus_copilot(payload: AskQueryRequest):
     from app.rag.retriever import CampusRAG as _RAG
     mentioned = _RAG._extract_resources_from_query(payload.query)
 
-    state_map = {s.resource_name: s for s in states}
-    if mentioned:
-        focus = list(mentioned)
-        if "Gymnasium" in focus and "Indoor Sports Complex" not in focus:
-            focus.append("Indoor Sports Complex")
-        focused_lines = []
-        for name in focus:
-            s = state_map.get(name)
-            if s:
-                anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
-                focused_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
-        live_state_str = "\n".join(focused_lines)
-    else:
-        live_state_str = ", ".join(f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states)
+    _SCHEDULE_WORDS = ("schedule", "my day", "my routine", "my plan", "my visits", "congestion in my", "my schedule")
+    is_sched_query = any(w in payload.query.lower() for w in _SCHEDULE_WORDS)
 
-    # Inject Layer 3 Personalization context if user_id is provided
-    if payload.user_id:
+    # ── Mode 3: Student Personal Schedule Query ─────────────────────────
+    if is_sched_query and payload.user_id:
         try:
             rec = generate_user_recommendations(payload.user_id)
-            prim = rec.get("primary_allocation")
-            if prim and (not mentioned or prim.get("resource") in mentioned):
-                live_state_str += f"\nUser {payload.user_id} Personal Load-Balanced Plan: Shift from {prim.get('resource')} ({prim.get('usual_time')}) -> {prim.get('assigned_alternative')} (avoiding {prim.get('predicted_occupancy')} peak)."
+            sched_items = rec.get("schedule", [])
+            user_name = rec.get("student_name", f"Student {payload.user_id}")
+            
+            lines = [f"STUDENT {user_name} ({payload.user_id}) PLANNED ROUTINE SCHEDULE TODAY:"]
+            for item in sched_items:
+                h = item.get("habit", {})
+                r = item.get("recommendation", {})
+                loc = h.get("location", "Venue")
+                t = h.get("time", "")
+                occ = h.get("usualOccupancy", 50)
+                is_c = h.get("isCongested", False)
+                if is_c:
+                    lines.append(f"- {t}: {loc} (CONGESTION WARNING: {occ}% predicted occupancy). Load-balanced plan: {r.get('activity')} at {r.get('time')} — {r.get('reasoning')}")
+                else:
+                    lines.append(f"- {t}: {loc} (Capacity normal: {occ}% predicted occupancy — no change needed)")
+            live_state_str = "\n".join(lines)
         except Exception:
-            pass
+            live_state_str = ", ".join(f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states)
+    else:
+        state_map = {s.resource_name: s for s in states}
+        if mentioned:
+            focus = list(mentioned)
+            if "Gymnasium" in focus and "Indoor Sports Complex" not in focus:
+                focus.append("Indoor Sports Complex")
+            focused_lines = []
+            for name in focus:
+                s = state_map.get(name)
+                if s:
+                    anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
+                    focused_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
+            live_state_str = "\n".join(focused_lines)
+        else:
+            live_state_str = ", ".join(f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states)
 
-    # Inject upcoming quiet forecast slots during daytime operating hours (07:00 to 21:30) for timing queries
-    _TIMING_WORDS = ("what time", "when should", "when can", "best time",
-                     "good time", "at what time", "which time", "when to go",
-                     "when is it", "least crowded", "quietest")
-    if any(w in payload.query.lower() for w in _TIMING_WORDS) and mentioned:
-        try:
-            from app.twin.forecast import generate_daily_forecast
-            from datetime import datetime
-            today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
-            now_mins = datetime.fromisoformat(eval_time).hour * 60 + datetime.fromisoformat(eval_time).minute
+        # Inject Layer 3 Personalization context if user_id is provided
+        if payload.user_id:
+            try:
+                rec = generate_user_recommendations(payload.user_id)
+                prim = rec.get("primary_allocation")
+                if prim and (not mentioned or prim.get("resource") in mentioned):
+                    live_state_str += f"\nUser {payload.user_id} Personal Load-Balanced Plan: Shift from {prim.get('resource')} ({prim.get('usual_time')}) -> {prim.get('assigned_alternative')} (avoiding {prim.get('predicted_occupancy')} peak)."
+            except Exception:
+                pass
 
-            def _t2m(t):
-                h, m = t.split(":")
-                return int(h) * 60 + int(m)
+        # Inject upcoming quiet forecast slots during daytime operating hours (07:00 to 21:30) for timing queries
+        _TIMING_WORDS = ("what time", "when should", "when can", "best time",
+                         "good time", "at what time", "which time", "when to go",
+                         "when is it", "least crowded", "quietest")
+        if any(w in payload.query.lower() for w in _TIMING_WORDS) and mentioned:
+            try:
+                from app.twin.forecast import generate_daily_forecast
+                from datetime import datetime
+                today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
+                now_mins = datetime.fromisoformat(eval_time).hour * 60 + datetime.fromisoformat(eval_time).minute
 
-            for res_name in mentioned:
-                slots = generate_daily_forecast(res_name, today)
-                # Filter to daytime operating hours (07:00 to 21:30)
-                op_slots = [s for s in slots if _t2m(s.time_slot) >= now_mins and 420 <= _t2m(s.time_slot) <= 1290]
-                if not op_slots:
-                    op_slots = [s for s in slots if 420 <= _t2m(s.time_slot) <= 1290]
-                
-                quiet = sorted(op_slots, key=lambda s: s.predicted_occupancy_pct)[:3]
-                if quiet:
-                    slot_strs = ", ".join(f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% full)" for s in quiet)
-                    live_state_str += f"\nQuieter operating slots today for {res_name}: {slot_strs}"
-        except Exception:
-            pass
+                def _t2m(t):
+                    h, m = t.split(":")
+                    return int(h) * 60 + int(m)
+
+                for res_name in mentioned:
+                    slots = generate_daily_forecast(res_name, today)
+                    # Filter to daytime operating hours (07:00 to 21:30)
+                    op_slots = [s for s in slots if _t2m(s.time_slot) >= now_mins and 420 <= _t2m(s.time_slot) <= 1290]
+                    if not op_slots:
+                        op_slots = [s for s in slots if 420 <= _t2m(s.time_slot) <= 1290]
+                    
+                    quiet = sorted(op_slots, key=lambda s: s.predicted_occupancy_pct)[:3]
+                    if quiet:
+                        slot_strs = ", ".join(f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% full)" for s in quiet)
+                        live_state_str += f"\nQuieter operating slots today for {res_name}: {slot_strs}"
+            except Exception:
+                pass
 
     is_fb = False
     engine_label = "Granite 3.1 (Ollama Local)"
@@ -321,14 +347,19 @@ def get_daily_user_report(user_id: str):
     """
     # 1. Compute Layer 3 Personalization & Load-Balanced Allocation
     rec_data = generate_user_recommendations(user_id)
-    allocation_payload = rec_data.get("primary_allocation", {})
+    allocation_payload = rec_data.get("primary_allocation")
     
     # 2. Feed Layer 3 allocation into Layer 4 RAG Storyteller
-    try:
-        rag = get_rag_service()
-        explanation = rag.generate_personalized_report(allocation_payload)
-    except Exception as e:
-        explanation = allocation_payload.get("reason", "Routine schedule balanced for optimal campus load.")
+    if not allocation_payload:
+        explanation = f"Good news, {rec_data.get('student_name', 'Student')}! All your planned visits today are within normal capacity limits. No schedule shifts are needed."
+    else:
+        try:
+            rag = get_rag_service()
+            explanation = rag.generate_personalized_report(allocation_payload)
+            if not explanation or "hit a model error" in explanation or "could not reach" in explanation:
+                explanation = allocation_payload.get("reason", "Routine schedule balanced for optimal campus load.")
+        except Exception:
+            explanation = allocation_payload.get("reason", "Routine schedule balanced for optimal campus load.")
     
     # Update reasoning in schedule items with LLM explanation if available
     schedule = rec_data.get("schedule", [])
