@@ -2,7 +2,9 @@ import json
 import os
 import pandas as pd
 from datetime import datetime
+import sqlite3
 import config
+from collections import Counter
 
 def get_status_bucket(pct):
     if pct < 20: return 'empty'
@@ -73,6 +75,20 @@ def create_daily_snapshots():
         with open(gt_file, 'r') as f:
             gt_data = json.load(f)
             ground_truth_events = gt_data.get('events', [])
+            
+    db_path = os.path.join(data_dir, 'campus_twin.db')
+    db_conn = None
+    if os.path.exists(db_path):
+        db_conn = sqlite3.connect(db_path)
+        
+    lb_results_file = os.path.join(data_dir, 'load_balancing_results.json')
+    lb_allocations = []
+    lb_unallocated = []
+    if os.path.exists(lb_results_file):
+        with open(lb_results_file, 'r') as f:
+            lb_data = json.load(f)
+            lb_allocations = lb_data.get('allocations', [])
+            lb_unallocated = lb_data.get('unallocated', [])
             
     df_logs = pd.DataFrame(logs)
     if df_logs.empty:
@@ -155,7 +171,52 @@ def create_daily_snapshots():
                 "peak_checkin_hour": peak_checkin_hour
             }
             
-            embed_text = f"{resource} {day_of_week} {date}: Average occupancy {avg_occupancy:.1f}%, peaked at {peak_occupancy:.1f}% at {peak_time}. High occupancy (>80%) for {hours_above_80:.1f} hours. {total_checkins} check-ins from {unique_users} unique users, average visit duration {avg_duration:.0f} minutes. Peak check-in hour {peak_checkin_hour}. Dominant status: {dominant_status}.{anomaly_text}"
+            peak_demand = 0.0
+            cause_label = "No anomaly"
+            if db_conn:
+                try:
+                    cursor = db_conn.cursor()
+                    cursor.execute("SELECT predicted_demand_pct, cause FROM forecasts WHERE resource_name = ? AND date = ? ORDER BY predicted_demand_pct DESC LIMIT 1", (resource, date))
+                    row = cursor.fetchone()
+                    if row:
+                        peak_demand = float(row[0]) if row[0] is not None else 0.0
+                        cause_label = row[1] if row[1] else "No anomaly"
+                except Exception:
+                    pass
+
+            if cause_label and not cause_label.endswith('.'):
+                cause_label += '.'
+                
+            day_allocs = [a for a in lb_allocations if a.get('from_resource') == resource]
+            day_unallocs = [u for u in lb_unallocated if u.get('resource') == resource]
+            M = len(day_allocs)
+            N = M + len(day_unallocs)
+            
+            if N > 0:
+                pct = (M / N) * 100 if N > 0 else 0
+                dest_counts = Counter()
+                for a in day_allocs:
+                    dest_counts[a.get('to_resource', 'unknown')] += 1
+                
+                if dest_counts:
+                    top_destination, _ = dest_counts.most_common(1)[0]
+                else:
+                    top_destination = "nearby alternatives"
+                    
+                allocation_text = f"{N} students flagged for reallocation; {M} ({pct:.1f}%) redistributed to {top_destination}"
+            else:
+                allocation_text = "No students flagged for reallocation"
+                
+            peak_hour_val = int(peak_time.split(':')[0]) if ':' in peak_time else 12
+            if peak_hour_val < 12:
+                time_of_day = "morning"
+            elif peak_hour_val < 17:
+                time_of_day = "afternoon"
+            else:
+                time_of_day = "evening"
+            day_pattern_description = f"regular {day_of_week} {time_of_day} pattern"
+            
+            embed_text = f"{date}, {resource}: occupancy peaked at {peak_occupancy:.1f}% (observed) / {peak_demand:.1f}% (true demand) around {peak_time}, driven by {day_pattern_description}. {allocation_text}. {cause_label}"
             
             snapshot = {
                 "resource": resource,
@@ -164,6 +225,9 @@ def create_daily_snapshots():
                 "day_of_week": day_of_week,
                 "day_index": d_idx,
                 "is_exam_week": is_exam_week,
+                "peak_demand_pct": round(peak_demand, 1),
+                "cause": cause_label,
+                "allocation_summary": allocation_text,
                 "summary": {
                     "avg_occupancy_pct": round(avg_occupancy, 1),
                     "peak_occupancy_pct": round(peak_occupancy, 1),
@@ -187,6 +251,9 @@ def create_daily_snapshots():
     combined_file = os.path.join(snapshots_dir, 'all_snapshots.json')
     with open(combined_file, 'w') as f:
         json.dump(all_snapshots, f, indent=2)
+        
+    if db_conn:
+        db_conn.close()
         
     print(f"Total snapshots generated: {len(all_snapshots)}")
 
