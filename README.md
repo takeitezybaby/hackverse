@@ -2,29 +2,46 @@
 
 ## Quick Start (Every team member runs this first)
 
+> **Note:** `data/` is gitignored. Run `setup.py` once after cloning to
+> generate all data files, seed the database, cache forecasts, and build
+> the FAISS index. You only need to do this once per machine.
+
 ```bash
 # 1. Clone the repo
-git clone <repo-url>
+git clone https://github.com/takeitezybaby/hackverse.git
 cd hackverse
 
-# 2. Create virtual environment
-python -m venv venv
-
-# 3. Activate venv
-# Windows:
-venv\Scripts\activate
-# Mac/Linux:
-source venv/bin/activate
-
-# 4. Install dependencies
+# 2. Install dependencies (Python 3.11+ required)
 pip install -r requirements.txt
 
-# 5. Generate synthetic data
-python data_gen/generate_all.py
+# 3. Start Ollama and pull the required models
+ollama serve                          # in a separate terminal
+ollama pull granite-embedding:278m
+ollama pull granite3.1-dense:8b
 
-# 6. Run the server
-python -m app.main
+# 4. ONE-TIME SETUP — generates all data, seeds DB, builds FAISS index
+python setup.py
+
+# 5. Launch the full demo
+run_demo_mode.bat                     # Windows
+# or manually:
+python -m app.main                    # backend  → http://127.0.0.1:8000
+python -m http.server 5173 --directory frontend  # frontend → http://127.0.0.1:5173/demo.html
 ```
+
+### What `setup.py` does
+
+| Step | What happens |
+|---|---|
+| 1 | Runs all 6 data generators — timetables, users, check-ins, occupancy logs, snapshots |
+| 2 | Generates 120 crowdsourced student reports |
+| 3 | Creates the SQLite schema (`data/campus_twin.db`) |
+| 4 | Seeds the DB from the generated JSON files |
+| 5 | Caches 25 920 Layer-2 forecast slots (30 days × 12 resources × 72 slots) |
+| 6 | Embeds 480 documents and builds the FAISS RAG index |
+
+Re-running `setup.py` is safe — each step clears its previous state before writing.
+
 
 ## Project Structure
 
