@@ -38,17 +38,17 @@
       </div>
       <div>
         <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-          Campus Digital Twin Copilot
+          Campus Buddy
           <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-400 border border-indigo-800">FastAPI Live</span>
         </h1>
-        <p class="text-xs text-slate-400">Process Mining & RAG-driven Campus Congestion Intelligence</p>
+        <p class="text-xs text-slate-400">Smart Campus Intelligence & Personal AI Assistant</p>
       </div>
     </div>
 
     <!-- Right Clock & Score -->
     <div class="flex items-center space-x-3 text-xs font-mono">
       <button onclick="scrollToCopilot()" class="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-all shadow-md flex items-center gap-1.5">
-        <i class="fa-solid fa-robot"></i> Copilot Chat
+        <i class="fa-solid fa-robot"></i> Campus Buddy Chat
       </button>
       <div class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center space-x-2 text-cyan-400">
         <i class="fa-solid fa-clock text-cyan-500"></i>
@@ -70,8 +70,8 @@
       <span class="px-2 py-0.5 rounded-lg bg-amber-500 text-slate-950 font-bold uppercase tracking-wider text-[10px]">Alert</span>
       <span id="ticker-text" class="font-medium">Loading live campus congestion telemetry...</span>
     </div>
-    <button onclick="showGroundTruthModal()" class="text-xs text-amber-400 underline hover:text-white transition-colors">
-      View Ground Truth Anomalies
+    <button onclick="showGroundTruthModal()" class="text-xs text-amber-400 underline hover:text-white transition-colors flex items-center gap-1">
+      <i class="fa-solid fa-circle-info"></i> View Ground Truth Anomalies
     </button>
   </div>
 
@@ -168,7 +168,7 @@
       <div id="copilot-panel" class="glass-card p-5 rounded-2xl space-y-3">
         <div class="flex justify-between items-center">
           <h3 class="text-sm font-bold text-white flex items-center gap-2">
-            <i class="fa-solid fa-robot text-cyan-400"></i> AI Copilot (IBM Granite RAG)
+            <i class="fa-solid fa-robot text-cyan-400"></i> AI Assistant (Campus Buddy)
           </h3>
         </div>
         <div class="flex items-center space-x-2">
@@ -178,8 +178,8 @@
         
         <div id="chat-messages" class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-2.5 text-slate-300 max-h-48 overflow-y-auto">
           <div class="p-2 rounded bg-slate-850 border border-slate-800">
-            <p class="text-cyan-300 font-bold text-[11px]">🤖 Copilot:</p>
-            <p class="text-[11px] text-slate-300">Hello! Ask me anything about campus congestion, venue forecasts, or daily schedules.</p>
+            <p class="text-cyan-300 font-bold text-[11px]">🤖 Campus Buddy:</p>
+            <p class="text-[11px] text-slate-300">Hello! I'm Campus Buddy. Ask me anything about campus congestion, venue forecasts, or your daily schedule.</p>
           </div>
         </div>
 
@@ -481,13 +481,47 @@
       const content = document.getElementById('gt-content');
       modal.classList.remove('hidden');
       modal.classList.add('flex');
+      content.innerHTML = '<p class="text-slate-400 font-mono animate-pulse">Loading ground truth anomaly events...</p>';
       
       const data = await fetchAPI('/api/events/ground-truth');
       if (data && data.events) {
-        content.innerHTML = '<pre>' + JSON.stringify(data.events, null, 2) + '</pre>';
+        let html = `
+          <div class="space-y-3">
+            <p class="text-slate-300 text-xs">The Digital Twin simulation includes synthetic ground-truth anomaly windows that temporarily override baseline predictions:</p>
+        `;
+        
+        data.events.forEach(evt => {
+          html += `
+            <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
+              <div class="flex justify-between items-center">
+                <span class="font-bold text-amber-400 text-xs">${evt.event_name || evt.type || 'Injected Anomaly'}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-800">Impact: ${evt.multiplier || evt.factor || '1.5x'}</span>
+              </div>
+              <div class="text-[11px] text-slate-300">
+                <span>Target Venue: <b class="text-white">${evt.target_resource || evt.resource || 'Campus Wide'}</b></span>
+              </div>
+              <p class="text-[10px] text-slate-400 italic">${evt.description || 'Simulated event influencing peak congestion patterns.'}</p>
+            </div>
+          `;
+        });
+        
+        html += `
+            <details class="pt-2">
+              <summary class="text-slate-400 hover:text-white cursor-pointer font-mono text-[10px]">View Raw JSON Payload</summary>
+              <pre class="mt-2 p-2 rounded bg-slate-950 text-slate-300 font-mono text-[10px] overflow-x-auto border border-slate-800">${JSON.stringify(data.events, null, 2)}</pre>
+            </details>
+          </div>
+        `;
+        content.innerHTML = html;
       } else {
-        content.innerText = "Failed to load ground truth anomalies.";
+        content.innerText = "No active ground truth anomalies found.";
       }
+    }
+
+    function hideGroundTruthModal() {
+      const modal = document.getElementById('gt-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
     }
 
     function scrollToCopilot() {
