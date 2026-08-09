@@ -206,20 +206,60 @@ def ask_campus_copilot(payload: AskQueryRequest):
     eval_time = payload.at_time or DEMO_NOW.isoformat()
     states = get_all_current_states(at_time=eval_time)
     
-    # Format live state summary
-    state_lines = []
-    for s in states:
-        anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
-        state_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
-    live_state_str = ", ".join(state_lines)
+    from app.rag.retriever import CampusRAG as _RAG
+    mentioned = _RAG._extract_resources_from_query(payload.query)
+
+    state_map = {s.resource_name: s for s in states}
+    if mentioned:
+        focus = list(mentioned)
+        if "Gymnasium" in focus and "Indoor Sports Complex" not in focus:
+            focus.append("Indoor Sports Complex")
+        focused_lines = []
+        for name in focus:
+            s = state_map.get(name)
+            if s:
+                anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
+                focused_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
+        live_state_str = "\n".join(focused_lines)
+    else:
+        live_state_str = ", ".join(f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states)
 
     # Inject Layer 3 Personalization context if user_id is provided
     if payload.user_id:
         try:
             rec = generate_user_recommendations(payload.user_id)
             prim = rec.get("primary_allocation")
-            if prim:
-                live_state_str += f" | User {payload.user_id} Layer 3 Load-Balanced Plan: Shift from {prim.get('resource')} ({prim.get('usual_time')}) -> {prim.get('assigned_alternative')} (avoiding {prim.get('predicted_occupancy')}% peak)."
+            if prim and (not mentioned or prim.get("resource") in mentioned):
+                live_state_str += f"\nUser {payload.user_id} Personal Load-Balanced Plan: Shift from {prim.get('resource')} ({prim.get('usual_time')}) -> {prim.get('assigned_alternative')} (avoiding {prim.get('predicted_occupancy')} peak)."
+        except Exception:
+            pass
+
+    # Inject upcoming quiet forecast slots during daytime operating hours (07:00 to 21:30) for timing queries
+    _TIMING_WORDS = ("what time", "when should", "when can", "best time",
+                     "good time", "at what time", "which time", "when to go",
+                     "when is it", "least crowded", "quietest")
+    if any(w in payload.query.lower() for w in _TIMING_WORDS) and mentioned:
+        try:
+            from app.twin.forecast import generate_daily_forecast
+            from datetime import datetime
+            today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
+            now_mins = datetime.fromisoformat(eval_time).hour * 60 + datetime.fromisoformat(eval_time).minute
+
+            def _t2m(t):
+                h, m = t.split(":")
+                return int(h) * 60 + int(m)
+
+            for res_name in mentioned:
+                slots = generate_daily_forecast(res_name, today)
+                # Filter to daytime operating hours (07:00 to 21:30)
+                op_slots = [s for s in slots if _t2m(s.time_slot) >= now_mins and 420 <= _t2m(s.time_slot) <= 1290]
+                if not op_slots:
+                    op_slots = [s for s in slots if 420 <= _t2m(s.time_slot) <= 1290]
+                
+                quiet = sorted(op_slots, key=lambda s: s.predicted_occupancy_pct)[:3]
+                if quiet:
+                    slot_strs = ", ".join(f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% full)" for s in quiet)
+                    live_state_str += f"\nQuieter operating slots today for {res_name}: {slot_strs}"
         except Exception:
             pass
 

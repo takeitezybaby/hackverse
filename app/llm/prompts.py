@@ -30,7 +30,7 @@ def build_general_query_prompt(
 ) -> str:
     """
     Mode 1 — direct student question, e.g. "Should I go to the gym now
-    or at 6 PM?"
+    or at 6 PM?" or "What time should I go to the gym?"
 
     current_live_state: ground-truth string from Layer 2/3 (occupancy,
         forecast, capacity — whatever the upstream engine decided).
@@ -41,18 +41,19 @@ def build_general_query_prompt(
 
     return f"""{_GUARDRAIL}
 
-CURRENT LIVE STATE (from the forecasting engine, ground truth):
+CURRENT LIVE STATE & FORECAST DATA (ground truth):
 {current_live_state}
 
-HISTORICAL CONTEXT (retrieved, for extra color only — current live state
-always wins if the two disagree):
+HISTORICAL CONTEXT (retrieved, for extra color only — live state & forecast data always wins):
 {context_block}
 
 STUDENT QUESTION:
 {user_query}
 
-Answer the student in 2-4 concise, friendly sentences. Reference only the
-figures given above.
+RESPONSE INSTRUCTIONS:
+1. If the question is an open-ended recommendation query (e.g., "what time should I go?", "when is the best time?"), answer directly with the recommended upcoming time slot(s) and venue options. Do NOT start your answer with "NO," or "YES,".
+2. If the question is a direct yes/no decision query (e.g., "should I go right now?"), state clearly whether now is a good time based on current occupancy.
+3. Keep the response in 2-4 concise, friendly, helpful sentences. Use only the exact figures and time slots provided above.
 
 ANSWER:"""
 
