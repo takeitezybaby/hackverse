@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from .prompts import build_general_query_prompt, build_personalized_report_prompt
 
-DEFAULT_MODEL = os.getenv("OLLAMA_GENERATOR_MODEL", "granite3.1-dense:8b ")
+DEFAULT_MODEL = os.getenv("OLLAMA_GENERATOR_MODEL", "granite3.1-dense:8b").strip()
 DEFAULT_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
 # Centralized so nothing downstream can silently raise temperature and
