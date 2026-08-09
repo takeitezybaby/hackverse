@@ -158,6 +158,9 @@
             <span id="load-score-badge" class="text-emerald-400 font-mono">Score: 92%</span>
           </div>
           <p id="your-day-explanation" class="text-slate-200 text-[11px]">Fetching personalized Layer 3 schedule...</p>
+          <button onclick="showPersonalScheduleModal()" class="w-full mt-2 py-2 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/50 text-indigo-200 font-bold text-[11px] transition-all flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-calendar-check text-cyan-400"></i> View Full Personal Day Schedule
+          </button>
         </div>
       </div>
 
@@ -190,6 +193,22 @@
 
     </section>
   </main>
+
+  <!-- Personal Day Schedule Modal -->
+  <div id="schedule-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
+    <div class="glass-card rounded-2xl max-w-2xl w-full p-6 space-y-4 text-xs max-h-[85vh] flex flex-col">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-white text-sm flex items-center gap-2">
+          <i class="fa-solid fa-calendar-days text-indigo-400"></i> Optimized Personal Day Schedule
+        </h3>
+        <button onclick="hidePersonalScheduleModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      
+      <div id="schedule-modal-body" class="space-y-4 overflow-y-auto pr-1 flex-1">
+        <p class="text-slate-400 font-mono">Generating schedule timeline...</p>
+      </div>
+    </div>
+  </div>
 
   <!-- Ground Truth Modal -->
   <div id="gt-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
@@ -386,6 +405,75 @@
         statusEl.innerText = "API Error: Server offline?";
         statusEl.className = "text-[11px] text-center font-mono text-rose-400";
       }
+    }
+
+    async function showPersonalScheduleModal() {
+      const modal = document.getElementById('schedule-modal');
+      const body = document.getElementById('schedule-modal-body');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      body.innerHTML = '<p class="text-slate-400 font-mono animate-pulse">Analyzing usual routine timings and generating optimized schedule...</p>';
+
+      const data = await fetchAPI('/api/schedule/personalized/u_0042');
+      if (!data || !data.itinerary) {
+        body.innerHTML = '<p class="text-rose-400 font-mono">Failed to load schedule timeline.</p>';
+        return;
+      }
+
+      let html = `
+        <div class="p-3 rounded-xl bg-indigo-950/60 border border-indigo-800 space-y-2">
+          <div class="flex justify-between items-center text-xs">
+            <span class="font-bold text-white">${data.student_name} (${data.user_id})</span>
+            <span class="text-emerald-400 font-mono font-bold">Load Balance Score: ${data.load_balance_score}%</span>
+          </div>
+          <p class="text-slate-200 text-xs italic bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 leading-relaxed">${data.narrative || 'Optimized personal day schedule active.'}</p>
+          <div class="flex justify-between text-[11px] text-slate-300 font-mono pt-1">
+            <span>Visits Analyzed: <b class="text-cyan-400">${data.total_routine_visits}</b></span>
+            <span>Shifts Suggested: <b class="text-amber-400">${data.shifts_suggested}</b></span>
+            <span>Time Saved: <b class="text-emerald-400">${data.total_time_saved_mins} mins</b></span>
+          </div>
+        </div>
+
+        <h4 class="font-bold text-slate-300 text-xs uppercase tracking-wider pt-2">Full Day Schedule Timeline</h4>
+        <div class="space-y-3">
+      `;
+
+      data.itinerary.forEach(item => {
+        const isC = item.is_congested;
+        const cardBg = isC ? 'bg-amber-950/20 border-amber-800/60' : 'bg-slate-900/60 border-slate-800';
+        const badgeColor = isC ? 'bg-amber-500/20 text-amber-300 border-amber-700' : 'bg-emerald-500/20 text-emerald-300 border-emerald-700';
+
+        html += `
+          <div class="p-3 rounded-xl border ${cardBg} space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="font-mono text-cyan-400 font-bold">${item.usual_time}</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${badgeColor}">${item.action}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-[11px]">
+              <div class="bg-slate-900/80 p-2 rounded border border-slate-800">
+                <span class="text-slate-400 block text-[10px]">USUAL ROUTINE:</span>
+                <span class="text-slate-200 font-bold">${item.usual_location}</span>
+                <span class="text-slate-400 block font-mono text-[10px]">${item.usual_occupancy} full</span>
+              </div>
+              <div class="bg-indigo-950/80 p-2 rounded border border-indigo-800">
+                <span class="text-indigo-300 block text-[10px]">OPTIMIZED PLAN:</span>
+                <span class="text-white font-bold">${item.optimized_location} (${item.optimized_time})</span>
+                <span class="text-emerald-400 block font-mono text-[10px]">${item.optimized_occupancy} full</span>
+              </div>
+            </div>
+            <p class="text-[10px] text-slate-400 italic">${item.reason}</p>
+          </div>
+        `;
+      });
+
+      html += `</div>`;
+      body.innerHTML = html;
+    }
+
+    function hidePersonalScheduleModal() {
+      const modal = document.getElementById('schedule-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
     }
 
     async function showGroundTruthModal() {
