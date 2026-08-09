@@ -19,36 +19,42 @@ except ImportError:
 
 # Override via env var if your pulled tag differs.
 EMBEDDING_MODEL_ID = os.getenv("OLLAMA_EMBED_MODEL", "granite-embedding:278m")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
 
-# granite-embedding:278m (multilingual) outputs 768-dim vectors.
-# Change this AND the FAISS index dim in retriever.py together if you
-# switch to a different embedding tag (e.g. granite-embedding:30m is
-# English-only and a different dimension).
+# granite-embedding:278m outputs 768-dim vectors.
 EMBEDDING_DIM = 768
 
-
 import hashlib
+import json
+import urllib.request
+import time
 
 class GraniteEmbedder:
     """
-    Thin wrapper around Ollama's /api/embed endpoint for the local
-    Granite embedding model. Produces 768-dim float vectors.
-    Falls back to a deterministic normalized hash vector if Ollama is unreachable.
+    Wrapper around Ollama's /api/embed endpoint for local Granite embeddings.
+    - Uses 127.0.0.1 to avoid Windows IPv6 localhost resolution delays.
+    - Uses 35s timeout to allow cold model loading into VRAM on first call.
+    - Uses urllib.request as a robust fallback if the python 'ollama' package is missing.
+    - Falls back to deterministic hash vectors only if Ollama server is offline.
     """
 
     def __init__(self) -> None:
         self.using_fallback = False
-        try:
-            self.client = ollama.Client(host=OLLAMA_HOST)
-        except Exception:
-            self.client = None
+        self.host = OLLAMA_HOST
         self.model_id = EMBEDDING_MODEL_ID
+        self.client = None
 
-    def _fallback_vector(self, text: str) -> list[float]:
+        if ollama is not None:
+            try:
+                self.client = ollama.Client(host=self.host, timeout=35.0)
+            except Exception:
+                self.client = None
+
+    def _fallback_vector(self, text: str, reason: str = "") -> list[float]:
         """Generate a deterministic 768-dim pseudo-vector from text hash when LLM daemon is offline."""
         if not self.using_fallback:
-            print(f"[WARNING] Local Ollama daemon unreachable at {OLLAMA_HOST}. Engaging deterministic fallback embedder.")
+            diag_reason = f" ({reason})" if reason else ""
+            print(f"[WARNING] Local Ollama daemon unreachable at {self.host}{diag_reason}. Engaging deterministic fallback embedder.")
             self.using_fallback = True
         seed = int(hashlib.md5(text.encode('utf-8')).hexdigest(), 16)
         vec = []
@@ -58,32 +64,45 @@ class GraniteEmbedder:
         norm = sum(v * v for v in vec) ** 0.5
         return [v / (norm or 1.0) for v in vec]
 
+    def _embed_urllib(self, texts: list[str]) -> list[list[float]]:
+        """Direct REST call to Ollama /api/embed using standard library urllib."""
+        url = f"{self.host}/api/embed"
+        payload = json.dumps({"model": self.model_id, "input": texts}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        # 35 second timeout for first-call cold model load
+        with urllib.request.urlopen(req, timeout=35.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["embeddings"]
+
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """
-        Batch-embed text chunks (historical occupancy notes, policy
-        snippets, etc.) for indexing into FAISS.
-        Returns list of 768-dim float vectors, same order as input.
+        Batch-embed text chunks for indexing into FAISS.
+        Returns list of 768-dim float vectors.
         """
         if not texts:
             return []
 
+        # Attempt 1: Using official ollama client if installed
+        if self.client:
+            try:
+                response = self.client.embed(model=self.model_id, input=texts)
+                return response["embeddings"]
+            except Exception as e1:
+                # If client call failed, try direct urllib before giving up
+                try:
+                    return self._embed_urllib(texts)
+                except Exception as e2:
+                    return [self._fallback_vector(t, reason=f"{type(e2).__name__}: {e2}") for t in texts]
+
+        # Attempt 2: Direct urllib REST call
         try:
-            if not self.client:
-                self.client = ollama.Client(host=OLLAMA_HOST)
-            response = self.client.embed(model=self.model_id, input=texts)
-            return response["embeddings"]
+            return self._embed_urllib(texts)
         except Exception as e:
-            # Fallback when Ollama daemon is offline or model not pulled yet
-            return [self._fallback_vector(t) for t in texts]
+            return [self._fallback_vector(t, reason=f"{type(e).__name__}: {e}") for t in texts]
 
     def embed_query(self, query: str) -> list[float]:
         """
         Embed a single query string for FAISS similarity search.
         """
-        try:
-            if not self.client:
-                self.client = ollama.Client(host=OLLAMA_HOST)
-            response = self.client.embed(model=self.model_id, input=[query])
-            return response["embeddings"][0]
-        except Exception:
-            return self._fallback_vector(query)
+        res = self.embed_documents([query])
+        return res[0] if res else self._fallback_vector(query)
