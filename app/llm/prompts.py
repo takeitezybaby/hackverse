@@ -98,3 +98,73 @@ usual time or indicates "no change", congratulate them that no change is
 needed instead of describing a swap.
 
 CARD TEXT:"""
+
+
+# Schedule-intent keywords — queries about the user's personal day/congestion plan
+_SCHEDULE_KEYWORDS = (
+    "my schedule", "my day", "check my", "when can i", "when should i",
+    "my routine", "my plan", "my visits", "my usual", "my congestion",
+    "congestion in my", "find congestion", "my timetable",
+)
+
+def is_schedule_query(query: str) -> bool:
+    """Return True when the query is asking about the user's personal schedule."""
+    q = query.lower()
+    return any(kw in q for kw in _SCHEDULE_KEYWORDS)
+
+
+def build_schedule_query_prompt(
+    user_query: str,
+    schedule: list,
+    live_state: str,
+) -> str:
+    """
+    Mode 3 — user asking about their own schedule and when congestion hits.
+
+    schedule: list of schedule entries from generate_user_recommendations,
+              each has habit (resource, time, predicted occupancy) and
+              recommendation (alternative resource/time if congested).
+    live_state: compact current occupancy for all resources.
+    """
+    if not schedule:
+        return f"{_GUARDRAIL}\n\nNo schedule data available for this user.\n\nSTUDENT QUESTION: {user_query}\n\nANSWER:"
+
+    lines = []
+    for entry in schedule:
+        habit = entry.get("habit", {})
+        rec   = entry.get("recommendation", {})
+        res   = habit.get("activity", habit.get("location", "Unknown"))
+        time  = habit.get("time", "?")
+        occ   = habit.get("usualOccupancy", "?")
+        congested = habit.get("isCongested", False)
+
+        if congested:
+            alt_res  = rec.get("location", res)
+            alt_time = rec.get("time", time)
+            alt_occ  = rec.get("predictedOccupancy", "?")
+            lines.append(
+                f"  - {time}: {res} → predicted {occ}% (CONGESTED)"
+                f" — suggested swap: {alt_res} at {alt_time} ({alt_occ}% predicted)"
+            )
+        else:
+            lines.append(f"  - {time}: {res} → predicted {occ}% (OK)")
+
+    schedule_block = "\n".join(lines)
+
+    return f"""{_GUARDRAIL}
+
+STUDENT'S PLANNED DAY (from the personalisation engine):
+{schedule_block}
+
+CURRENT LIVE OCCUPANCY (for context):
+{live_state}
+
+STUDENT QUESTION: {user_query}
+
+Reply in 3-5 short, friendly sentences.
+- List which of their usual stops will be congested and at what time.
+- For each congested stop, state the suggested alternative from the schedule above.
+- End with a one-line summary of when their day looks clear vs busy.
+- Do not invent any numbers — use only the figures above.
+
+ANSWER:"""

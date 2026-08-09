@@ -202,25 +202,65 @@ def ask_campus_copilot(payload: AskQueryRequest):
     """
     RAG-driven copilot endpoint.
     Retrieves FAISS snapshot context + live state and generates grounded response via Ollama Granite.
+    Routes schedule/congestion-plan queries to the personalisation engine (Mode 3).
     """
+    from app.rag.retriever import CampusRAG as _RAG
+    from app.llm.prompts import is_schedule_query, build_schedule_query_prompt
+    from app.llm.client import OllamaLLMClient
+
     eval_time = payload.at_time or DEMO_NOW.isoformat()
     states = get_all_current_states(at_time=eval_time)
 
-    # Build a name->state map for fast lookup
-    state_map = {s.resource_name: s for s in states}
+    # Full compact summary — used in the API response field and as live-state context
+    full_state_summary = ", ".join(
+        f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states
+    )
+    compact_live = "\n".join(
+        f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states
+    )
 
-    # Identify which resources the query is actually about
-    from app.rag.retriever import CampusRAG as _RAG
+    is_fb = False
+    engine_label = "Granite 3.1 (Ollama Local)"
+    fallback_warn = None
+
+    # ── Mode 3: Schedule / congestion-plan query ─────────────────────────
+    if is_schedule_query(payload.query) and payload.user_id:
+        try:
+            rec = generate_user_recommendations(payload.user_id)
+            schedule = rec.get("schedule", [])
+            prompt = build_schedule_query_prompt(payload.query, schedule, compact_live)
+            llm = OllamaLLMClient()
+            answer = llm.generate(prompt, max_tokens=350)
+            is_fb = False
+        except Exception as e:
+            answer = (
+                "I couldn't load your schedule right now. "
+                f"Try asking about a specific venue instead. (detail: {e})"
+            )
+            is_fb = True
+            engine_label = "Rule-Based Engine (Fallback)"
+            fallback_warn = str(e)
+
+        return {
+            "query": payload.query,
+            "user_id": payload.user_id,
+            "answer": answer,
+            "live_state_summary": full_state_summary,
+            "sources": ["Personalisation Engine", "Live Digital Twin State"],
+            "engine": engine_label,
+            "is_fallback": is_fb,
+            "fallback_warning": fallback_warn,
+            "timestamp": eval_time,
+        }
+
+    # ── Mode 1: Resource-specific or general occupancy query ─────────────
+    state_map = {s.resource_name: s for s in states}
     mentioned = _RAG._extract_resources_from_query(payload.query)
 
-    # Build a focused live-state string:
-    #   - If the query names specific resources, show only those
-    #   - Always append Indoor Sports Complex as the gym alternative
-    #   - Fall back to all 12 only when no resource is detected
     if mentioned:
         focus = list(mentioned)
-        # For gym queries automatically include the sports complex as fallback option
-        if any("Gymnasium" == r for r in focus) and "Indoor Sports Complex" not in focus:
+        # For gym queries auto-include the sports complex as the alternative option
+        if "Gymnasium" in focus and "Indoor Sports Complex" not in focus:
             focus.append("Indoor Sports Complex")
         state_lines = []
         for name in focus:
@@ -233,17 +273,7 @@ def ask_campus_copilot(payload: AskQueryRequest):
                 )
         live_state_str = "\n".join(state_lines)
     else:
-        # No specific resource mentioned — show all, compact format
-        state_lines = []
-        for s in states:
-            anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
-            state_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
-        live_state_str = "\n".join(state_lines)
-
-    # Full summary (for the API response field, not the prompt)
-    full_state_summary = ", ".join(
-        f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states
-    )
+        live_state_str = compact_live
 
     # Inject Layer 3 recommendation only when the query is about that resource
     if payload.user_id and mentioned:
@@ -259,9 +289,6 @@ def ask_campus_copilot(payload: AskQueryRequest):
         except Exception:
             pass
 
-    is_fb = False
-    engine_label = "Granite 3.1 (Ollama Local)"
-    fallback_warn = None
     try:
         rag = get_rag_service()
         answer = rag.answer_general_query(payload.query, live_state_str)
@@ -284,7 +311,7 @@ def ask_campus_copilot(payload: AskQueryRequest):
         "engine": engine_label,
         "is_fallback": is_fb,
         "fallback_warning": fallback_warn,
-        "timestamp": eval_time
+        "timestamp": eval_time,
     }
 
 
