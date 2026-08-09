@@ -381,11 +381,9 @@ def get_daily_user_report(user_id: str):
     Returns personalized 'Your Day' card schedule & RAG-generated explanation.
     Dynamically connects Layer 3 (Personalization Engine) -> Layer 4 (RAG Explanation Engine).
     """
-    # 1. Compute Layer 3 Personalization & Load-Balanced Allocation
     rec_data = generate_user_recommendations(user_id)
     allocation_payload = rec_data.get("primary_allocation")
     
-    # 2. Feed Layer 3 allocation into Layer 4 RAG Storyteller
     if not allocation_payload:
         explanation = f"Good news, {rec_data.get('student_name', 'Student')}! All your planned visits today are within normal capacity limits. No schedule shifts are needed."
     else:
@@ -397,7 +395,6 @@ def get_daily_user_report(user_id: str):
         except Exception:
             explanation = allocation_payload.get("reason", "Routine schedule balanced for optimal campus load.")
     
-    # Update reasoning in schedule items with LLM explanation if available
     schedule = rec_data.get("schedule", [])
     if schedule and explanation:
         schedule[0]["recommendation"]["reasoning"] = explanation
@@ -410,5 +407,30 @@ def get_daily_user_report(user_id: str):
         "primary_allocation": allocation_payload,
         "schedule": schedule
     }
+
+
+@router.get("/schedule/personalized/{user_id}")
+def get_personalized_day_schedule_endpoint(user_id: str):
+    """
+    Layer 3 & 4 Personalized Day Schedule Endpoint:
+    Analyzes the user's usual daily routine habits against Layer 2 congestion forecasts,
+    suggests time/venue shifts for each routine visit, and generates an optimized schedule itinerary.
+    """
+    from app.personalization.allocator import generate_personalized_day_schedule
+    from app.llm.prompts import build_day_schedule_prompt
+    
+    plan = generate_personalized_day_schedule(user_id)
+    
+    narrative = None
+    try:
+        rag = get_rag_service()
+        prompt = build_day_schedule_prompt(plan["student_name"], plan)
+        llm = OllamaLLMClient()
+        narrative = llm.generate(prompt, max_tokens=300)
+    except Exception:
+        narrative = f"Here is your optimized daily schedule for {plan['student_name']}! We have load-balanced {plan['shifts_suggested']} routine visits to save you ~{plan['total_time_saved_mins']} minutes of peak congestion wait times today."
+
+    plan["narrative"] = narrative
+    return plan
 
 

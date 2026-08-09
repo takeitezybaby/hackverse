@@ -1,14 +1,14 @@
 """
 llm/prompts.py
 
-All prompt construction lives here — client.py never builds prompt
+All prompt construction lives here - client.py never builds prompt
 strings inline, retriever.py never builds them at all. Single place to
 tune wording, guardrail language, and formatting.
 
 Every prompt embeds the same hard rule: the model explains and formats
 data it is given, it never invents or recalculates numbers, times, or
 probabilities. That data always comes from Layer 2 (forecast) or
-Layer 3 (allocation) upstream — never from the LLM itself.
+Layer 3 (allocation) upstream - never from the LLM itself.
 """
 
 # Shared guardrail block, reused verbatim in both prompt modes so the
@@ -20,7 +20,7 @@ _GUARDRAIL = (
     "percentage, occupancy figure, capacity value, or time slot that is "
     "not explicitly present in the data given to you. If the given data "
     "is insufficient to answer, say so plainly instead of guessing.\n"
-    "CRITICAL FORMATTING RULE: NEVER start your response with robotic cliché openings "
+    "CRITICAL FORMATTING RULE: NEVER start your response with robotic cliche openings "
     "such as 'Based on the current live state...', 'Based on the data provided...', "
     "or 'According to the forecast...'. Jump directly into a natural, conversational, and direct response."
 )
@@ -32,7 +32,7 @@ def build_general_query_prompt(
     historical_context: str = "",
 ) -> str:
     """
-    Mode 1 — direct student question, e.g. "When should I go to the cafeteria?",
+    Mode 1 - direct student question, e.g. "When should I go to the cafeteria?",
     "When is the cafeteria most crowded?", "Where should I go now?"
     """
     context_block = historical_context.strip() or "No historical context available."
@@ -58,19 +58,42 @@ RESPONSE INSTRUCTIONS:
 ANSWER:"""
 
 
+def build_day_schedule_prompt(user_name: str, day_plan: dict) -> str:
+    """
+    Mode 4 - Builds prompt for generating a warm, personalized day schedule itinerary narrative.
+    """
+    itinerary = day_plan.get("itinerary", [])
+    lines = [f"STUDENT NAME: {user_name}"]
+    lines.append(f"TOTAL VISITS: {day_plan.get('total_routine_visits')}, SHIFTS SUGGESTED: {day_plan.get('shifts_suggested')}, TIME SAVED: {day_plan.get('total_time_saved_mins')} minutes")
+    lines.append("DAILY ITINERARY DETAILS:")
+    for item in itinerary:
+        lines.append(
+            f"- Usual: {item['usual_time']} @ {item['usual_location']} ({item['usual_occupancy']} full, Congested={item['is_congested']}) "
+            f"--> Optimized: {item['optimized_time']} @ {item['optimized_location']} ({item['optimized_occupancy']} full) "
+            f"[{item['action']}]: {item['reason']}"
+        )
+    
+    evidence_block = "\n".join(lines)
+    
+    return f"""{_GUARDRAIL}
+
+STUDENT PERSONAL DAY PLAN EVIDENCE:
+{evidence_block}
+
+INSTRUCTIONS:
+Write a warm, friendly, 3-5 sentence personalized daily schedule itinerary summary for {user_name}.
+Highlight which routine visits are kept at usual times and which specific visits are shifted or redirected (with exact times and locations). Emphasize total time saved. Do NOT use cliche openings like 'Based on...'.
+
+SCHEDULE NARRATIVE:"""
+
+
 def build_personalized_report_prompt(
     allocation_data: dict,
     historical_context: str = "",
 ) -> str:
     """
-    Mode 2 — turns one Layer 3 allocation payload into a short "Your Day"
+    Mode 2 - turns one Layer 3 allocation payload into a short "Your Day"
     dashboard card explanation.
-
-    Expected keys in allocation_data (all upstream-computed, never
-    recalculated here): user_id, resource, usual_time,
-    predicted_occupancy, assigned_alternative, reason.
-    Missing keys fall back to safe placeholder text rather than raising,
-    since this runs against live dashboard data at demo time.
     """
     user_id = allocation_data.get("user_id", "unknown")
     resource = allocation_data.get("resource", "the resource")

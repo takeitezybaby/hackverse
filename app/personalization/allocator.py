@@ -143,15 +143,7 @@ def generate_user_recommendations(user_id: str, target_date: Optional[str] = Non
 
     # Fallback primary payload if all routines were low-occupancy
     if not primary_allocation_payload:
-        primary_allocation_payload = {
-            "user_id": user_id,
-            "student_name": profile.get("name", f"Student {user_id}"),
-            "resource": "Gymnasium",
-            "usual_time": "19:00",
-            "predicted_occupancy": "94%",
-            "assigned_alternative": "18:30",
-            "reason": "Predicted congestion peak at 19:00 (94% full). Early entry at 18:30 recommended."
-        }
+        primary_allocation_payload = None
 
     return {
         "user_id": user_id,
@@ -159,4 +151,69 @@ def generate_user_recommendations(user_id: str, target_date: Optional[str] = Non
         "load_balance_score": max(70, load_balance_score),
         "primary_allocation": primary_allocation_payload,
         "schedule": schedule_items
+    }
+
+
+def generate_personalized_day_schedule(user_id: str = "u_0042") -> dict:
+    """
+    Analyzes the user's usual daily routine habits against Layer 2 congestion forecasts.
+    Generates a complete personalized day schedule with before/after comparison and
+    suggested time/venue shifts for each item throughout the day.
+    """
+    rec_data = generate_user_recommendations(user_id)
+    student_name = rec_data.get("student_name", f"Student {user_id}")
+    schedule_items = rec_data.get("schedule", [])
+    
+    itinerary = []
+    total_time_saved = 0
+    shifts_suggested = 0
+    
+    for item in schedule_items:
+        h = item.get("habit", {})
+        r = item.get("recommendation", {})
+        usual_t = h.get("time", "")
+        usual_loc = h.get("location", "")
+        usual_occ = h.get("usualOccupancy", 50)
+        is_c = h.get("isCongested", False)
+        
+        rec_t = r.get("time", usual_t)
+        rec_loc = r.get("location", usual_loc)
+        rec_occ = r.get("predictedOccupancy", usual_occ)
+        reason = r.get("reasoning", "Optimal slot.")
+        saved = r.get("timeSavedMinutes", 0)
+        
+        if is_c:
+            shifts_suggested += 1
+            total_time_saved += saved
+            if rec_loc != usual_loc:
+                action_label = f"Redirect to {rec_loc}"
+            else:
+                action_label = f"Shift time to {rec_t}"
+        else:
+            action_label = "Confirmed (No change needed)"
+        
+        itinerary.append({
+            "usual_time": usual_t,
+            "usual_location": usual_loc,
+            "usual_occupancy": f"{usual_occ}%",
+            "is_congested": is_c,
+            "optimized_time": rec_t,
+            "optimized_location": rec_loc,
+            "optimized_occupancy": f"{rec_occ}%",
+            "action": action_label,
+            "reason": reason,
+            "time_saved_mins": saved
+        })
+
+    # Sort chronologically by usual_time
+    itinerary.sort(key=lambda x: x["usual_time"])
+    
+    return {
+        "user_id": user_id,
+        "student_name": student_name,
+        "load_balance_score": rec_data.get("load_balance_score", 92),
+        "total_routine_visits": len(itinerary),
+        "shifts_suggested": shifts_suggested,
+        "total_time_saved_mins": total_time_saved,
+        "itinerary": itinerary
     }
