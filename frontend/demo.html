@@ -221,7 +221,7 @@
     async function refreshData() {
       document.getElementById('refresh-icon').classList.add('fa-spin');
       
-      const data = await fetchAPI('/forecast');
+      const data = await fetchAPI('/api/forecast-frontend') || await fetchAPI('/forecast');
       if (data && Array.isArray(data)) {
         cachedResources = data;
         renderVenues(data);
@@ -238,10 +238,15 @@
 
       // Fetch live Layer 3 + Layer 4 report
       const reportData = await fetchAPI('/api/report/daily/u_0042');
-      if (reportData && reportData.explanation) {
-        document.getElementById('user-profile-name').innerText = (reportData.student_name || 'Alex Mercer') + ' (u_0042)';
-        document.getElementById('load-score-badge').innerText = 'Score: ' + (reportData.load_balance_score || 92) + '%';
-        document.getElementById('your-day-explanation').innerText = reportData.explanation;
+      if (reportData) {
+        if (reportData.student_name) {
+          document.getElementById('user-profile-name').innerText = reportData.student_name + ' (u_0042)';
+        }
+        if (reportData.load_balance_score) {
+          document.getElementById('load-score-badge').innerText = 'Score: ' + reportData.load_balance_score + '%';
+        }
+        const exp = reportData.explanation || (reportData.primary_allocation ? reportData.primary_allocation.reason : 'Personalized Layer 3 schedule active.');
+        document.getElementById('your-day-explanation').innerText = exp;
       }
       
       setTimeout(() => document.getElementById('refresh-icon').classList.remove('fa-spin'), 600);
