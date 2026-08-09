@@ -275,6 +275,35 @@ def ask_campus_copilot(payload: AskQueryRequest):
     else:
         live_state_str = compact_live
 
+    # For "when/what time" queries inject today's forecast so the LLM has
+    # real quieter slots to recommend instead of inventing times.
+    _TIMING_WORDS = ("what time", "when should", "when can", "best time",
+                     "good time", "at what time", "which time", "when to go",
+                     "when is it", "least crowded", "quietest")
+    is_timing_query = any(w in payload.query.lower() for w in _TIMING_WORDS)
+
+    if is_timing_query and mentioned:
+        try:
+            from app.twin.forecast import generate_daily_forecast
+            from datetime import datetime
+            today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
+            for res_name in mentioned:
+                slots = generate_daily_forecast(res_name, today)
+                # Pick the 3 upcoming slots with the lowest predicted occupancy
+                now_mins = (datetime.fromisoformat(eval_time).hour * 60
+                            + datetime.fromisoformat(eval_time).minute)
+                def _t2m(t): h, m = t.split(":"); return int(h)*60+int(m)
+                future = [s for s in slots if _t2m(s.time_slot) >= now_mins]
+                quiet = sorted(future, key=lambda s: s.predicted_occupancy_pct)[:3]
+                if quiet:
+                    slot_strs = ", ".join(
+                        f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% — {s.predicted_status})"
+                        for s in quiet
+                    )
+                    live_state_str += f"\nQuieter slots today for {res_name}: {slot_strs}"
+        except Exception:
+            pass
+
     # Inject Layer 3 recommendation only when the query is about that resource
     if payload.user_id and mentioned:
         try:

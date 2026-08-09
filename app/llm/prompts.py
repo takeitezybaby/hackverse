@@ -22,6 +22,17 @@ _GUARDRAIL = (
 )
 
 
+# Occupancy thresholds used in the recommendation rule below.
+# Mirrors get_status_bucket() in daily_snapshots_gen.py exactly.
+_OCCUPANCY_GUIDE = (
+    "Occupancy guide: <40% = empty/low (great time to go), "
+    "40-64% = moderate (comfortable), "
+    "65-84% = high (busy but usable), "
+    "85-94% = full (avoid if possible), "
+    "95%+ = overflow (do not go now)."
+)
+
+
 def build_general_query_prompt(
     user_query: str,
     current_live_state: str,
@@ -29,14 +40,17 @@ def build_general_query_prompt(
 ) -> str:
     """
     Mode 1 — direct student question, e.g. "Should I go to the gym now?"
+    or "At what time should I go to the library?"
 
-    current_live_state: pre-filtered string from Layer 2 — only the
-        resources relevant to the query, not all 12.
+    current_live_state: pre-filtered string from Layer 2 — includes live
+        occupancy AND, for timing queries, the quietest forecast slots today.
     historical_context: top-k FAISS snippets for extra colour only.
     """
     context_block = historical_context.strip() or "No additional context."
 
     return f"""{_GUARDRAIL}
+
+{_OCCUPANCY_GUIDE}
 
 LIVE OCCUPANCY DATA (ground truth, right now):
 {current_live_state}
@@ -47,10 +61,12 @@ HISTORICAL PATTERNS (background context only — live data takes priority):
 STUDENT QUESTION: {user_query}
 
 Reply in 2-3 short, friendly sentences.
-- Start with a direct YES or NO recommendation based on the live occupancy.
-- State the current occupancy percentage and status.
-- If it is too crowded, suggest the best alternative or time to come back.
-- Do not mention dates, historical snapshots, or allocation plan details.
+- Use the occupancy guide above to decide YES (go now) or NO (wait/avoid).
+  YES only if current occupancy is below 65%. NO if 65% or above.
+- State the exact current occupancy percentage and status label.
+- If NO, cite the specific quieter time slot(s) from LIVE OCCUPANCY DATA
+  (labelled "Quieter slots today"). Never invent times not listed above.
+- Do not mention dates, snapshot names, or allocation plan IDs.
 
 ANSWER:"""
 
