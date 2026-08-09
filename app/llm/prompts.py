@@ -14,12 +14,11 @@ Layer 3 (allocation) upstream — never from the LLM itself.
 # Shared guardrail block, reused verbatim in both prompt modes so the
 # instruction never drifts out of sync between them.
 _GUARDRAIL = (
-    "You are a Campus Digital Twin Copilot assistant. Your ONLY job is to "
-    "explain and format decisions and data that are given to you below. "
-    "You must NEVER invent, estimate, guess, or recalculate any number, "
-    "percentage, occupancy figure, capacity value, or time slot that is "
-    "not explicitly present in the data given to you. If the given data "
-    "is insufficient to answer, say so plainly instead of guessing."
+    "You are a Campus Digital Twin Copilot — a helpful assistant for "
+    "students navigating campus congestion. "
+    "Use ONLY the data provided below. Never invent, estimate, or "
+    "recalculate any number, percentage, time, or capacity figure that "
+    "is not explicitly stated. If the data is insufficient, say so."
 )
 
 
@@ -29,30 +28,29 @@ def build_general_query_prompt(
     historical_context: str = "",
 ) -> str:
     """
-    Mode 1 — direct student question, e.g. "Should I go to the gym now
-    or at 6 PM?"
+    Mode 1 — direct student question, e.g. "Should I go to the gym now?"
 
-    current_live_state: ground-truth string from Layer 2/3 (occupancy,
-        forecast, capacity — whatever the upstream engine decided).
-    historical_context: optional retrieved FAISS snippets, color only,
-        never treated as more authoritative than current_live_state.
+    current_live_state: pre-filtered string from Layer 2 — only the
+        resources relevant to the query, not all 12.
+    historical_context: top-k FAISS snippets for extra colour only.
     """
-    context_block = historical_context.strip() or "No historical context available."
+    context_block = historical_context.strip() or "No additional context."
 
     return f"""{_GUARDRAIL}
 
-CURRENT LIVE STATE (from the forecasting engine, ground truth):
+LIVE OCCUPANCY DATA (ground truth, right now):
 {current_live_state}
 
-HISTORICAL CONTEXT (retrieved, for extra color only — current live state
-always wins if the two disagree):
+HISTORICAL PATTERNS (background context only — live data takes priority):
 {context_block}
 
-STUDENT QUESTION:
-{user_query}
+STUDENT QUESTION: {user_query}
 
-Answer the student in 2-4 concise, friendly sentences. Reference only the
-figures given above.
+Reply in 2-3 short, friendly sentences.
+- Start with a direct YES or NO recommendation based on the live occupancy.
+- State the current occupancy percentage and status.
+- If it is too crowded, suggest the best alternative or time to come back.
+- Do not mention dates, historical snapshots, or allocation plan details.
 
 ANSWER:"""
 

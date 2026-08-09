@@ -200,26 +200,62 @@ class AskQueryRequest(BaseModel):
 @router.post("/ask")
 def ask_campus_copilot(payload: AskQueryRequest):
     """
-    RAG-driven copilot endpoint. 
+    RAG-driven copilot endpoint.
     Retrieves FAISS snapshot context + live state and generates grounded response via Ollama Granite.
     """
     eval_time = payload.at_time or DEMO_NOW.isoformat()
     states = get_all_current_states(at_time=eval_time)
-    
-    # Format live state summary
-    state_lines = []
-    for s in states:
-        anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
-        state_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
-    live_state_str = ", ".join(state_lines)
 
-    # Inject Layer 3 Personalization context if user_id is provided
-    if payload.user_id:
+    # Build a name->state map for fast lookup
+    state_map = {s.resource_name: s for s in states}
+
+    # Identify which resources the query is actually about
+    from app.rag.retriever import CampusRAG as _RAG
+    mentioned = _RAG._extract_resources_from_query(payload.query)
+
+    # Build a focused live-state string:
+    #   - If the query names specific resources, show only those
+    #   - Always append Indoor Sports Complex as the gym alternative
+    #   - Fall back to all 12 only when no resource is detected
+    if mentioned:
+        focus = list(mentioned)
+        # For gym queries automatically include the sports complex as fallback option
+        if any("Gymnasium" == r for r in focus) and "Indoor Sports Complex" not in focus:
+            focus.append("Indoor Sports Complex")
+        state_lines = []
+        for name in focus:
+            s = state_map.get(name)
+            if s:
+                anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
+                state_lines.append(
+                    f"{s.resource_name}: {s.occupancy_pct}% ({s.status})"
+                    f" — capacity {s.current_occupancy}/{s.max_capacity}{anomaly_str}"
+                )
+        live_state_str = "\n".join(state_lines)
+    else:
+        # No specific resource mentioned — show all, compact format
+        state_lines = []
+        for s in states:
+            anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
+            state_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
+        live_state_str = "\n".join(state_lines)
+
+    # Full summary (for the API response field, not the prompt)
+    full_state_summary = ", ".join(
+        f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states
+    )
+
+    # Inject Layer 3 recommendation only when the query is about that resource
+    if payload.user_id and mentioned:
         try:
             rec = generate_user_recommendations(payload.user_id)
             prim = rec.get("primary_allocation")
-            if prim:
-                live_state_str += f" | User {payload.user_id} Layer 3 Load-Balanced Plan: Shift from {prim.get('resource')} ({prim.get('usual_time')}) -> {prim.get('assigned_alternative')} (avoiding {prim.get('predicted_occupancy')}% peak)."
+            if prim and prim.get("resource") in mentioned:
+                live_state_str += (
+                    f"\nYour load-balanced plan: visit {prim.get('assigned_alternative')} "
+                    f"instead of {prim.get('resource')} at {prim.get('usual_time')} "
+                    f"(predicted {prim.get('predicted_occupancy')} full)."
+                )
         except Exception:
             pass
 
@@ -238,12 +274,12 @@ def ask_campus_copilot(payload: AskQueryRequest):
         engine_label = "Rule-Based Engine (Fallback)"
         fallback_warn = f"Ollama engine exception: {str(e)}"
         answer = f"Live state: {live_state_str}. (LLM engine status note: {str(e)})"
-    
+
     return {
         "query": payload.query,
         "user_id": payload.user_id,
         "answer": answer,
-        "live_state_summary": live_state_str,
+        "live_state_summary": full_state_summary,
         "sources": ["FAISS Snapshot Embeddings", "Live Digital Twin State"],
         "engine": engine_label,
         "is_fallback": is_fb,
