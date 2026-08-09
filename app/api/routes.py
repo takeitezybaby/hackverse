@@ -209,10 +209,18 @@ def ask_campus_copilot(payload: AskQueryRequest):
     from app.rag.retriever import CampusRAG as _RAG
     mentioned = _RAG._extract_resources_from_query(payload.query)
 
+    query_lower = payload.query.lower()
     _SCHEDULE_WORDS = ("schedule", "my day", "my routine", "my plan", "my visits", "congestion in my", "my schedule")
-    is_sched_query = any(w in payload.query.lower() for w in _SCHEDULE_WORDS)
+    _NOW_WORDS = ("where should", "where to go", "where can i go", "where to study", "anywhere quiet", "quiet places", "quiet spots", "least crowded right now")
+    _PEAK_WORDS = ("most crowded", "peak hour", "peak time", "busiest", "get crowded", "get busy", "busiest time", "busiest hours")
+    _TIMING_WORDS = ("when should", "what time", "best time to", "good time to", "when can i", "when to go")
 
-    # ── Mode 3: Student Personal Schedule Query ─────────────────────────
+    is_sched_query = any(w in query_lower for w in _SCHEDULE_WORDS)
+    is_now_query = any(w in query_lower for w in _NOW_WORDS)
+    is_peak_query = any(w in query_lower for w in _PEAK_WORDS)
+    is_timing_query = any(w in query_lower for w in _TIMING_WORDS)
+
+    # ── Intent 1: Student Personal Schedule Query ───────────────────────
     if is_sched_query and payload.user_id:
         try:
             rec = generate_user_recommendations(payload.user_id)
@@ -234,6 +242,64 @@ def ask_campus_copilot(payload: AskQueryRequest):
             live_state_str = "\n".join(lines)
         except Exception:
             live_state_str = ", ".join(f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states)
+
+    # ── Intent 2: Real-Time Recommendation ("where should I go now?") ───
+    elif is_now_query:
+        quietest = sorted(states, key=lambda s: s.occupancy_pct)[:3]
+        q_lines = [f"- {s.resource_name}: {s.occupancy_pct}% full ({s.status})" for s in quietest]
+        live_state_str = "QUIETEST RECOMMENDED CAMPUS SPOTS RIGHT NOW:\n" + "\n".join(q_lines)
+
+    # ── Intent 3: Peak / Crowdedness Analysis Query ─────────────────────
+    elif is_peak_query and mentioned:
+        try:
+            from app.twin.forecast import generate_daily_forecast
+            from datetime import datetime
+            today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
+            peak_lines = []
+            for res_name in mentioned:
+                slots = generate_daily_forecast(res_name, today)
+                peaks = sorted(slots, key=lambda s: s.predicted_occupancy_pct, reverse=True)[:3]
+                peak_strs = ", ".join(f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% full)" for s in peaks)
+                peak_lines.append(f"Peak congestion windows today for {res_name}: {peak_strs}")
+            live_state_str = "\n".join(peak_lines)
+        except Exception:
+            live_state_str = ", ".join(f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states)
+
+    # ── Intent 4: Off-Peak Timing Recommendation Query ─────────────────
+    elif is_timing_query and mentioned:
+        state_map = {s.resource_name: s for s in states}
+        focused_lines = []
+        for name in mentioned:
+            s = state_map.get(name)
+            if s:
+                focused_lines.append(f"Current live status for {s.resource_name}: {s.occupancy_pct}% full ({s.status})")
+        live_state_str = "\n".join(focused_lines)
+
+        try:
+            from app.twin.forecast import generate_daily_forecast
+            from datetime import datetime
+            today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
+            now_mins = datetime.fromisoformat(eval_time).hour * 60 + datetime.fromisoformat(eval_time).minute
+
+            def _t2m(t):
+                h, m = t.split(":")
+                return int(h) * 60 + int(m)
+
+            for res_name in mentioned:
+                slots = generate_daily_forecast(res_name, today)
+                # Filter to daytime operating hours (07:00 to 21:30)
+                op_slots = [s for s in slots if _t2m(s.time_slot) >= now_mins and 420 <= _t2m(s.time_slot) <= 1290]
+                if not op_slots:
+                    op_slots = [s for s in slots if 420 <= _t2m(s.time_slot) <= 1290]
+                
+                quiet = sorted(op_slots, key=lambda s: s.predicted_occupancy_pct)[:3]
+                if quiet:
+                    slot_strs = ", ".join(f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% full)" for s in quiet)
+                    live_state_str += f"\nRecommended quiet operating slots today for {res_name}: {slot_strs}"
+        except Exception:
+            pass
+
+    # ── Default: General Live State Inquiry ─────────────────────────────
     else:
         state_map = {s.resource_name: s for s in states}
         if mentioned:
@@ -250,42 +316,12 @@ def ask_campus_copilot(payload: AskQueryRequest):
         else:
             live_state_str = ", ".join(f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states)
 
-        # Inject Layer 3 Personalization context if user_id is provided
         if payload.user_id:
             try:
                 rec = generate_user_recommendations(payload.user_id)
                 prim = rec.get("primary_allocation")
                 if prim and (not mentioned or prim.get("resource") in mentioned):
                     live_state_str += f"\nUser {payload.user_id} Personal Load-Balanced Plan: Shift from {prim.get('resource')} ({prim.get('usual_time')}) -> {prim.get('assigned_alternative')} (avoiding {prim.get('predicted_occupancy')} peak)."
-            except Exception:
-                pass
-
-        # Inject upcoming quiet forecast slots during daytime operating hours (07:00 to 21:30) for timing queries
-        _TIMING_WORDS = ("what time", "when should", "when can", "best time",
-                         "good time", "at what time", "which time", "when to go",
-                         "when is it", "least crowded", "quietest")
-        if any(w in payload.query.lower() for w in _TIMING_WORDS) and mentioned:
-            try:
-                from app.twin.forecast import generate_daily_forecast
-                from datetime import datetime
-                today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
-                now_mins = datetime.fromisoformat(eval_time).hour * 60 + datetime.fromisoformat(eval_time).minute
-
-                def _t2m(t):
-                    h, m = t.split(":")
-                    return int(h) * 60 + int(m)
-
-                for res_name in mentioned:
-                    slots = generate_daily_forecast(res_name, today)
-                    # Filter to daytime operating hours (07:00 to 21:30)
-                    op_slots = [s for s in slots if _t2m(s.time_slot) >= now_mins and 420 <= _t2m(s.time_slot) <= 1290]
-                    if not op_slots:
-                        op_slots = [s for s in slots if 420 <= _t2m(s.time_slot) <= 1290]
-                    
-                    quiet = sorted(op_slots, key=lambda s: s.predicted_occupancy_pct)[:3]
-                    if quiet:
-                        slot_strs = ", ".join(f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% full)" for s in quiet)
-                        live_state_str += f"\nQuieter operating slots today for {res_name}: {slot_strs}"
             except Exception:
                 pass
 

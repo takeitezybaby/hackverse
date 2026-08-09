@@ -19,7 +19,10 @@ _GUARDRAIL = (
     "You must NEVER invent, estimate, guess, or recalculate any number, "
     "percentage, occupancy figure, capacity value, or time slot that is "
     "not explicitly present in the data given to you. If the given data "
-    "is insufficient to answer, say so plainly instead of guessing."
+    "is insufficient to answer, say so plainly instead of guessing.\n"
+    "CRITICAL FORMATTING RULE: NEVER start your response with robotic cliché openings "
+    "such as 'Based on the current live state...', 'Based on the data provided...', "
+    "or 'According to the forecast...'. Jump directly into a natural, conversational, and direct response."
 )
 
 
@@ -29,31 +32,28 @@ def build_general_query_prompt(
     historical_context: str = "",
 ) -> str:
     """
-    Mode 1 — direct student question, e.g. "Should I go to the gym now
-    or at 6 PM?" or "What time should I go to the gym?"
-
-    current_live_state: ground-truth string from Layer 2/3 (occupancy,
-        forecast, capacity — whatever the upstream engine decided).
-    historical_context: optional retrieved FAISS snippets, color only,
-        never treated as more authoritative than current_live_state.
+    Mode 1 — direct student question, e.g. "When should I go to the cafeteria?",
+    "When is the cafeteria most crowded?", "Where should I go now?"
     """
     context_block = historical_context.strip() or "No historical context available."
 
     return f"""{_GUARDRAIL}
 
-CURRENT LIVE STATE & FORECAST DATA (ground truth):
+DATA EVIDENCE & REAL-TIME DIGITAL TWIN CONTEXT:
 {current_live_state}
 
-HISTORICAL CONTEXT (retrieved, for extra color only — live state & forecast data always wins):
+HISTORICAL CONTEXT:
 {context_block}
 
 STUDENT QUESTION:
 {user_query}
 
 RESPONSE INSTRUCTIONS:
-1. If the question is an open-ended recommendation query (e.g., "what time should I go?", "when is the best time?"), answer directly with the recommended upcoming time slot(s) and venue options. Do NOT start your answer with "NO," or "YES,".
-2. If the question is a direct yes/no decision query (e.g., "should I go right now?"), state clearly whether now is a good time based on current occupancy.
-3. Keep the response in 2-4 concise, friendly, helpful sentences. Use only the exact figures and time slots provided above.
+1. Speak directly, warmly, and naturally. DO NOT start your response with 'Based on...', 'According to...', 'NO,', or 'YES,'.
+2. If asked 'where should I go now' or 'where to study/visit now', recommend the top quiet venues listed in the evidence.
+3. If asked 'when is [venue] most crowded' or 'peak hours', explain the exact peak time window(s) and highest occupancy figures given in the evidence.
+4. If asked 'when should I go to [venue]' or 'best time', recommend the quietest operating time slots given in the evidence.
+5. Keep your response in 2-4 concise, helpful sentences. Use only figures and times explicitly present in the evidence above.
 
 ANSWER:"""
 
