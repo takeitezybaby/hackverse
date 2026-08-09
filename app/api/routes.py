@@ -210,6 +210,33 @@ def ask_campus_copilot(payload: AskQueryRequest):
     mentioned = _RAG._extract_resources_from_query(payload.query)
 
     query_lower = payload.query.lower()
+    _CAMPUS_DOMAIN_WORDS = (
+        "library", "lab", "gym", "gymnasium", "cafeteria", "canteen", "food", 
+        "court", "sports", "student center", "wifi", "study", "schedule", "routine", 
+        "congestion", "busy", "crowded", "occupancy", "capacity", "forecast", 
+        "visit", "go", "where", "when", "time", "peak", "quiet", "open", "slot", "how"
+    )
+    has_campus_words = any(w in query_lower for w in _CAMPUS_DOMAIN_WORDS)
+
+    # ── Out-of-Domain / Scope Guardrail Check ──────────────────────────
+    try:
+        rag_instance = get_rag_service()
+        conf = rag_instance.compute_query_confidence(payload.query)
+        if (conf.get("is_out_of_domain") and not has_campus_words and not mentioned):
+            return {
+                "query": payload.query,
+                "user_id": payload.user_id,
+                "answer": "I am trained as your Campus Digital Twin Copilot focused on campus facilities (libraries, computer labs, gymnasium, cafeterias, and student schedules). I don't have information on off-campus topics like railway stations, external city places, or general non-campus questions.",
+                "live_state_summary": f"Out-of-domain query detected (Vector L2 Distance: {conf.get('min_distance')}).",
+                "sources": ["Scope Guardrail Filter"],
+                "engine": "Granite 3.1 (Scope Guardrail)",
+                "is_fallback": False,
+                "fallback_warning": None,
+                "timestamp": eval_time
+            }
+    except Exception:
+        pass
+
     _SCHEDULE_WORDS = ("schedule", "my day", "my routine", "my plan", "my visits", "congestion in my", "my schedule")
     _NOW_WORDS = ("where should", "where to go", "where can i go", "where to study", "anywhere quiet", "quiet places", "quiet spots", "least crowded right now")
     _PEAK_WORDS = ("most crowded", "peak hour", "peak time", "busiest", "get crowded", "get busy", "busiest time", "busiest hours")

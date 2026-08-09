@@ -436,6 +436,34 @@ class CampusRAG:
             matching.append(i)
         return matching
 
+    def compute_query_confidence(self, query: str) -> dict:
+        """
+        Calculates vector distance confidence score for query against FAISS corpus.
+        Returns dict with min_distance, confidence ('high'|'low'), and is_out_of_domain bool.
+        """
+        if self.index.ntotal == 0:
+            return {"is_out_of_domain": True, "min_distance": 999.0, "confidence": "low"}
+
+        query_vector = np.array([self.embedder.embed_query(query)], dtype="float32")
+        
+        if isinstance(self.index, SimpleIndex):
+            q = query_vector[0]
+            dists = [float(np.linalg.norm(np.array(v) - q)) for v in self.index.vectors]
+            min_d = min(dists) if dists else 999.0
+        elif faiss is not None:
+            distances, _ = self.index.search(query_vector, k=1)
+            min_d = float(distances[0][0]) if len(distances[0]) > 0 else 999.0
+        else:
+            min_d = 0.5
+
+        # L2 Distance Threshold: > 0.72 indicates query vector is outside campus document distribution
+        is_ood = min_d > 0.72
+        return {
+            "min_distance": round(min_d, 4),
+            "confidence": "low" if is_ood else "high",
+            "is_out_of_domain": is_ood
+        }
+
     def search_context(self, query: str, k: int = 5,
                        resource_name: str = None,
                        resource_names: List[str] = None,
