@@ -184,6 +184,19 @@ def create_daily_snapshots():
                 except Exception:
                     pass
 
+            # Combine with ground truth event notes if cause_label is generic or missing
+            gt_note = ""
+            if anomaly_text and "No major anomalies" not in anomaly_text:
+                gt_note = anomaly_text.replace(" Anomalies: ", "").strip()
+
+            if cause_label == "No anomaly" or not cause_label:
+                if gt_note:
+                    cause_label = gt_note
+                else:
+                    cause_label = "No anomaly"
+            elif gt_note and gt_note.lower() not in cause_label.lower():
+                cause_label = f"{cause_label} ({gt_note})"
+
             if cause_label and not cause_label.endswith('.'):
                 cause_label += '.'
                 
