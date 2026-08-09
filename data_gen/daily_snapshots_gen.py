@@ -105,6 +105,15 @@ def create_daily_snapshots():
         df_checkins['checkin_time'] = pd.to_datetime(df_checkins['checkin_time'].str.replace('Z', ''))
         df_checkins['date'] = df_checkins['checkin_time'].dt.date.astype(str)
         df_checkins['hour'] = df_checkins['checkin_time'].dt.hour
+
+    # Build a lookup: (rerouted_from_resource, date) -> count of users rerouted away
+    # These are checkins where rerouted_from is set — they were turned away from that resource.
+    reroute_away_counts: dict = {}
+    if not df_checkins.empty and 'rerouted_from' in df_checkins.columns:
+        rerouted_rows = df_checkins[df_checkins['rerouted_from'].notna()]
+        for _, row in rerouted_rows.iterrows():
+            key = (row['rerouted_from'], row['date'])
+            reroute_away_counts[key] = reroute_away_counts.get(key, 0) + 1
     
     all_snapshots = []
     resources = df_logs['resource_name'].unique()
@@ -171,16 +180,24 @@ def create_daily_snapshots():
                 "peak_checkin_hour": peak_checkin_hour
             }
             
-            peak_demand = 0.0
+            # Bug fix #1: compute true demand live from checkins data.
+            # true_demand = observed_peak_occupancy + (rerouted_away / capacity) * 100
+            # Rerouted-away users are those who intended this resource but were turned away;
+            # they appear in checkins.json with rerouted_from == this resource.
+            # This is never less than observed occupancy, by definition.
+            rerouted_away = reroute_away_counts.get((resource, date), 0)
+            capacity = config.RESOURCE_CAPACITIES.get(resource, 100)
+            rerouted_pct = (rerouted_away / capacity) * 100.0
+            peak_demand = round(min(peak_occupancy + rerouted_pct, 100.0), 1)
+
             cause_label = "No anomaly"
             if db_conn:
                 try:
                     cursor = db_conn.cursor()
-                    cursor.execute("SELECT predicted_demand_pct, cause FROM forecasts WHERE resource_name = ? AND date = ? ORDER BY predicted_demand_pct DESC LIMIT 1", (resource, date))
+                    cursor.execute("SELECT cause FROM forecasts WHERE resource_name = ? AND date = ? LIMIT 1", (resource, date))
                     row = cursor.fetchone()
                     if row:
-                        peak_demand = float(row[0]) if row[0] is not None else 0.0
-                        cause_label = row[1] if row[1] else "No anomaly"
+                        cause_label = row[0] if row[0] else "No anomaly"
                 except Exception:
                     pass
 
@@ -200,8 +217,11 @@ def create_daily_snapshots():
             if cause_label and not cause_label.endswith('.'):
                 cause_label += '.'
                 
-            day_allocs = [a for a in lb_allocations if a.get('from_resource') == resource]
-            day_unallocs = [u for u in lb_unallocated if u.get('resource') == resource]
+            # Bug fix #2: filter allocations by BOTH resource AND date so each snapshot
+            # gets only the allocations for that specific resource-day, not all dates collapsed
+            # into one resource bucket (which caused identical numbers across all dates).
+            day_allocs = [a for a in lb_allocations if a.get('from_resource') == resource and a.get('forecast_date') == date]
+            day_unallocs = [u for u in lb_unallocated if u.get('resource') == resource and u.get('forecast_date', date) == date]
             M = len(day_allocs)
             N = M + len(day_unallocs)
             
