@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 from .prompts import build_general_query_prompt, build_personalized_report_prompt
 
-DEFAULT_MODEL = os.getenv("OLLAMA_GENERATOR_MODEL", "granite3.1-dense:8b ")
-DEFAULT_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+DEFAULT_MODEL = os.getenv("OLLAMA_GENERATOR_MODEL", "granite3.1-dense:8b")
+DEFAULT_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
 
 # Centralized so nothing downstream can silently raise temperature and
 # start hallucinating numbers that contradict Layer 2/3.
@@ -72,22 +72,37 @@ class OllamaLLMClient:
             logger.warning("OllamaLLMClient.generate called with empty prompt")
             return _EMPTY_PROMPT_MSG
 
+        base_options = {
+            "temperature": temperature,
+            "num_predict": max_tokens,
+            "stop": ["\n\n"],
+            "repeat_penalty": 1.05,
+        }
+
         try:
             response = self.client.generate(
                 model=self.model,
                 prompt=prompt,
-                options={
-                    "temperature": temperature,
-                    "num_predict": max_tokens,
-                    "stop": ["\n\n"],
-                    "repeat_penalty": 1.05,
-                },
+                options=base_options,
             )
             return response.get("response", "").strip()
 
         except ollama.ResponseError as exc:
-            # Raised by the ollama package for model-level problems —
-            # e.g. model tag not pulled, bad request to the API.
+            # CUDA OOM / runner crash — retry once with CPU-only (num_gpu=0).
+            # This happens when other models have exhausted VRAM; the model
+            # still works correctly on CPU at the cost of ~3-5s extra latency.
+            if "cuda" in str(exc).lower() or "runner" in str(exc).lower() or "500" in str(exc):
+                logger.warning("Ollama CUDA error, retrying with CPU (num_gpu=0): %s", exc)
+                try:
+                    response = self.client.generate(
+                        model=self.model,
+                        prompt=prompt,
+                        options={**base_options, "num_gpu": 0},
+                    )
+                    return response.get("response", "").strip()
+                except Exception as cpu_exc:
+                    logger.error("CPU fallback also failed (model=%s): %s", self.model, cpu_exc)
+                    return _MODEL_ERROR_MSG.format(model=self.model)
             logger.error("Ollama model error (model=%s): %s", self.model, exc)
             return _MODEL_ERROR_MSG.format(model=self.model)
 
