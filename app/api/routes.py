@@ -224,7 +224,11 @@ def ask_campus_copilot(payload: AskQueryRequest):
     fallback_warn = None
 
     # ── Mode 3: Schedule / congestion-plan query ─────────────────────────
-    if is_schedule_query(payload.query) and payload.user_id:
+    # Only use Mode 3 when the query is about the user's overall day AND does
+    # NOT mention a specific venue — venue-specific timing questions ("when
+    # should I go to the gym") must go to Mode 1 so forecast slots are used.
+    _mentioned_check = _RAG._extract_resources_from_query(payload.query)
+    if is_schedule_query(payload.query) and payload.user_id and not _mentioned_check:
         try:
             rec = generate_user_recommendations(payload.user_id)
             schedule = rec.get("schedule", [])

@@ -116,9 +116,11 @@ needed instead of describing a swap.
 CARD TEXT:"""
 
 
-# Schedule-intent keywords — queries about the user's personal day/congestion plan
+# Schedule-intent keywords — queries about the user's personal day/congestion plan.
+# Deliberately excludes generic timing words like "when should i" / "when can i"
+# because those are venue-specific timing queries handled by Mode 1 + forecast slots.
 _SCHEDULE_KEYWORDS = (
-    "my schedule", "my day", "check my", "when can i", "when should i",
+    "my schedule", "my day", "check my schedule", "check my day",
     "my routine", "my plan", "my visits", "my usual", "my congestion",
     "congestion in my", "find congestion", "my timetable",
 )
