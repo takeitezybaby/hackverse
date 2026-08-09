@@ -51,15 +51,21 @@ def generate_user_recommendations(user_id: str, target_date: Optional[str] = Non
 
         # Query Layer 2 Forecast for this resource at usual_time
         try:
-            fc_list = generate_forecast(res_name, target_date)
-            # Find closest 15-min slot
+            from app.twin.forecast import generate_daily_forecast
+            fc_list = generate_daily_forecast(res_name, target_date)
+            # Find the slot whose time_slot matches usual_time exactly, or the nearest one
             matching_slot = next((s for s in fc_list if s.time_slot == usual_time), None)
             if not matching_slot and fc_list:
-                matching_slot = fc_list[0]
-            
+                # Pick the slot with the closest time string
+                def _t2m(t):
+                    h, m = t.split(":"); return int(h) * 60 + int(m)
+                uh, um = usual_time.split(":") if ":" in usual_time else ("12", "00")
+                usual_mins = int(uh) * 60 + int(um)
+                matching_slot = min(fc_list, key=lambda s: abs(_t2m(s.time_slot) - usual_mins))
+
             pred_occ = matching_slot.predicted_occupancy_pct if matching_slot else 50.0
             pred_demand = matching_slot.predicted_demand_pct if matching_slot else pred_occ
-            cause_str = matching_slot.cause if matching_slot else "Normal routine"
+            cause_str = matching_slot.cause if matching_slot and matching_slot.cause else "Normal routine"
         except Exception as e:
             pred_occ = 85.0
             pred_demand = 85.0
