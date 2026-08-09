@@ -482,8 +482,19 @@ class CampusRAG:
         if not filtered_ids:
             filtered_ids = list(range(self.index.ntotal))
 
-        # Build a sub-index from filtered vectors for search
-        if faiss is not None and len(filtered_ids) < self.index.ntotal:
+        # Perform search over filtered_ids subset
+        top_ids = []
+        if isinstance(self.index, SimpleIndex):
+            q = query_vector[0]
+            dists = []
+            for global_idx in filtered_ids:
+                if global_idx < len(self.index.vectors):
+                    v = self.index.vectors[global_idx]
+                    d = float(np.linalg.norm(np.array(v) - q))
+                    dists.append((d, global_idx))
+            dists.sort(key=lambda x: x[0])
+            top_ids = [gid for _, gid in dists[:k]]
+        elif faiss is not None and len(filtered_ids) < self.index.ntotal:
             sub_index = faiss.IndexFlatL2(EMBEDDING_DIM)
             filtered_vectors = np.zeros((len(filtered_ids), EMBEDDING_DIM), dtype="float32")
             for local_i, global_i in enumerate(filtered_ids):
@@ -492,38 +503,18 @@ class CampusRAG:
 
             k_effective = min(k, sub_index.ntotal)
             _distances, local_indices = sub_index.search(query_vector, k_effective)
-
-            snippets = []
-            for local_idx in local_indices[0]:
-                if local_idx == -1:
-                    continue
-                global_idx = filtered_ids[local_idx]
-                if global_idx < len(self.metadata):
-                    snippets.append(self.metadata[global_idx].embed_text)
-                elif global_idx < len(self.documents):
-                    snippets.append(self.documents[global_idx])
+            top_ids = [filtered_ids[local_idx] for local_idx in local_indices[0] if local_idx != -1]
         else:
             k_effective = min(k, self.index.ntotal)
             _distances, indices = self.index.search(query_vector, k_effective)
+            top_ids = [idx for idx in indices[0] if idx != -1]
 
-            snippets = []
-            for idx in indices[0]:
-                if idx == -1:
-                    continue
-                if idx in set(filtered_ids):
-                    if idx < len(self.metadata):
-                        snippets.append(self.metadata[idx].embed_text)
-                    elif idx < len(self.documents):
-                        snippets.append(self.documents[idx])
-
-            if not snippets:
-                for idx in indices[0]:
-                    if idx == -1:
-                        continue
-                    if idx < len(self.metadata):
-                        snippets.append(self.metadata[idx].embed_text)
-                    elif idx < len(self.documents):
-                        snippets.append(self.documents[idx])
+        snippets = []
+        for global_idx in top_ids:
+            if global_idx < len(self.metadata):
+                snippets.append(self.metadata[global_idx].embed_text)
+            elif global_idx < len(self.documents):
+                snippets.append(self.documents[global_idx])
 
         if not snippets:
             return "No historical context available."
