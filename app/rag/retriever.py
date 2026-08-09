@@ -409,17 +409,23 @@ class CampusRAG:
     # Filter-first retrieval
     # ------------------------------------------------------------------
 
-    def _filter_indices(self, resource_id: str = None,
+    # ------------------------------------------------------------------
+    # Filter-first retrieval
+    # ------------------------------------------------------------------
+
+    def _filter_indices(self, resource_ids: List[str] = None,
                         day_of_week: str = None,
                         anomaly_type: str = None,
                         source_type: str = None) -> List[int]:
         """
         Return vector indices matching the given metadata filters.
         All filters are optional; None means 'match anything'.
+        resource_ids can be a list of resource slugs (e.g. ['main_library', 'gymnasium']).
         """
         matching = []
+        res_set = set(resource_ids) if resource_ids else None
         for i, m in enumerate(self.metadata):
-            if resource_id and m.resource_id != resource_id:
+            if res_set and m.resource_id not in res_set:
                 continue
             if day_of_week and m.day_of_week.lower() != day_of_week.lower():
                 continue
@@ -432,14 +438,18 @@ class CampusRAG:
 
     def search_context(self, query: str, k: int = 5,
                        resource_name: str = None,
+                       resource_names: List[str] = None,
                        day_of_week: str = None,
                        anomaly_type: str = None) -> str:
         """
         Filter-first, search-second retrieval.
 
-        Given a query, optionally filter to a specific resource/weekday/anomaly,
+        Given a query, filter to matching resource(s)/weekday/anomaly,
         then run FAISS similarity search within the filtered subset.
-        Returns top-k historical context snippets as a bullet-point string.
+        Fallback hierarchy:
+          1. Exact filter (resources + day_of_week + anomaly)
+          2. Resource filter only (if day_of_week yields 0 results)
+          3. Global search across all 480 vectors (if 0 resources named or 0 results)
         """
         if self.index.ntotal == 0:
             return "No historical context available."
@@ -447,21 +457,33 @@ class CampusRAG:
         # Compute query embedding
         query_vector = np.array([self.embedder.embed_query(query)], dtype="float32")
 
-        # Determine which indices match the filter
-        resource_slug = _slug(resource_name) if resource_name else None
+        # Collect target resource slugs
+        slugs = []
+        if resource_names:
+            slugs.extend([_slug(r) for r in resource_names if r])
+        elif resource_name:
+            slugs.append(_slug(resource_name))
+
+        # Attempt 1: Filter with all criteria (resource + day_of_week + anomaly)
         filtered_ids = self._filter_indices(
-            resource_id=resource_slug,
+            resource_ids=slugs if slugs else None,
             day_of_week=day_of_week,
             anomaly_type=anomaly_type,
         )
 
-        # If no filter matches or no filters applied, search globally
+        # Attempt 2: If day_of_week filter produced 0 vectors, relax day_of_week filter
+        if not filtered_ids and day_of_week and slugs:
+            filtered_ids = self._filter_indices(
+                resource_ids=slugs,
+                anomaly_type=anomaly_type,
+            )
+
+        # Attempt 3: If no resources named or 0 results, fall back to global search
         if not filtered_ids:
             filtered_ids = list(range(self.index.ntotal))
 
         # Build a sub-index from filtered vectors for search
         if faiss is not None and len(filtered_ids) < self.index.ntotal:
-            # Reconstruct filtered vectors into a temporary sub-index
             sub_index = faiss.IndexFlatL2(EMBEDDING_DIM)
             filtered_vectors = np.zeros((len(filtered_ids), EMBEDDING_DIM), dtype="float32")
             for local_i, global_i in enumerate(filtered_ids):
@@ -471,7 +493,6 @@ class CampusRAG:
             k_effective = min(k, sub_index.ntotal)
             _distances, local_indices = sub_index.search(query_vector, k_effective)
 
-            # Map local indices back to global
             snippets = []
             for local_idx in local_indices[0]:
                 if local_idx == -1:
@@ -482,7 +503,6 @@ class CampusRAG:
                 elif global_idx < len(self.documents):
                     snippets.append(self.documents[global_idx])
         else:
-            # SimpleIndex fallback or no filtering needed — search all
             k_effective = min(k, self.index.ntotal)
             _distances, indices = self.index.search(query_vector, k_effective)
 
@@ -490,14 +510,12 @@ class CampusRAG:
             for idx in indices[0]:
                 if idx == -1:
                     continue
-                # Check if this index is in our filtered set
                 if idx in set(filtered_ids):
                     if idx < len(self.metadata):
                         snippets.append(self.metadata[idx].embed_text)
                     elif idx < len(self.documents):
                         snippets.append(self.documents[idx])
 
-            # If filtering removed everything, fall back to unfiltered top-k
             if not snippets:
                 for idx in indices[0]:
                     if idx == -1:
@@ -513,14 +531,15 @@ class CampusRAG:
         return "\n".join(f"- {snippet}" for snippet in snippets[:k])
 
     # ------------------------------------------------------------------
-    # Resource extraction helper
+    # Query parsing helpers
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_resource_from_query(query: str) -> Optional[str]:
+    def _extract_resources_from_query(query: str) -> List[str]:
         """
-        Try to identify a campus resource mentioned in the user's query.
-        Returns the canonical resource name if found, else None.
+        Identify ALL campus resources mentioned in the user's query.
+        Handles multi-resource queries (e.g. 'library or gym').
+        Returns list of canonical resource names.
         """
         query_lower = query.lower()
         resource_keywords = {
@@ -546,10 +565,28 @@ class CampusRAG:
             "wifi cafeteria": "WiFi Zone - Cafeteria",
             "library": "Main Library",
         }
-        # Check longest matches first to avoid "library" matching before "science library"
+        found = []
+        # Sort keywords by length descending to match longer specific names first
         for keyword in sorted(resource_keywords.keys(), key=len, reverse=True):
             if keyword in query_lower:
-                return resource_keywords[keyword]
+                canonical = resource_keywords[keyword]
+                if canonical not in found:
+                    found.append(canonical)
+                # Remove matched keyword snippet to avoid overlapping sub-matches
+                query_lower = query_lower.replace(keyword, "")
+        return found
+
+    @staticmethod
+    def _extract_day_of_week_from_query(query: str) -> Optional[str]:
+        """
+        Extract explicit day of week from query text if present.
+        Returns capitalized day name (e.g. 'Tuesday') or None.
+        """
+        days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        query_lower = query.lower()
+        for d in days:
+            if d in query_lower:
+                return d.capitalize()
         return None
 
     # ------------------------------------------------------------------
@@ -559,12 +596,14 @@ class CampusRAG:
     def answer_general_query(self, user_query: str, current_live_state: str) -> str:
         """
         Answer a direct student question using live state + retrieved
-        historical context. Filters retrieval to the mentioned resource.
+        historical context. Automatically extracts resource(s) and weekday.
         """
-        resource = self._extract_resource_from_query(user_query)
+        resources = self._extract_resources_from_query(user_query)
+        day_of_week = self._extract_day_of_week_from_query(user_query)
         context = self.search_context(
             user_query, k=5,
-            resource_name=resource,
+            resource_names=resources if resources else None,
+            day_of_week=day_of_week,
         )
         return self.llm.answer_query(
             user_query=user_query,
