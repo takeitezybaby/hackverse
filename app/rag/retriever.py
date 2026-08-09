@@ -24,21 +24,24 @@ except ImportError:
 
 from .embeddings import GraniteEmbedder, EMBEDDING_DIM
 
-try:
-    from app.llm.client import OllamaLLMClient
-except Exception:
+def _get_llm_client():
     try:
-        from llm import OllamaLLMClient
+        from app.llm.client import OllamaLLMClient
+        return OllamaLLMClient()
     except Exception:
-        class DummyLLMClient:
-            def answer_query(self, user_query, current_live_state, historical_context=""):
-                return f"Answer for query '{user_query}' with live state: {current_live_state}. Context: {historical_context}"
-            def explain_report(self, allocation_data, historical_context=""):
-                res = allocation_data.get("resource", "Gymnasium")
-                orig = allocation_data.get("usual_time", "19:00")
-                alt = allocation_data.get("assigned_alternative", "18:30")
-                return f"{res} hits peak congestion at {orig} ({allocation_data.get('predicted_occupancy', '94%')} full). Shifting to {alt} avoids the rush."
-        OllamaLLMClient = DummyLLMClient
+        try:
+            from llm.client import OllamaLLMClient
+            return OllamaLLMClient()
+        except Exception as e:
+            class DummyLLMClient:
+                def answer_query(self, user_query, current_live_state, historical_context=""):
+                    return f"Answer for query '{user_query}' with live state: {current_live_state}. Context: {historical_context}"
+                def explain_report(self, allocation_data, historical_context=""):
+                    res = allocation_data.get("resource", "Gymnasium")
+                    orig = allocation_data.get("usual_time", "19:00")
+                    alt = allocation_data.get("assigned_alternative", "18:30")
+                    return f"{res} hits peak congestion at {orig} ({allocation_data.get('predicted_occupancy', '94%')} full). Shifting to {alt} avoids the rush."
+            return DummyLLMClient()
 
 import os
 import json
@@ -143,7 +146,7 @@ class CampusRAG:
 
     def __init__(self) -> None:
         self.embedder = GraniteEmbedder()
-        self.llm = OllamaLLMClient()
+        self._llm = None
 
         if faiss is not None:
             self.index = faiss.IndexFlatL2(EMBEDDING_DIM)
@@ -154,6 +157,16 @@ class CampusRAG:
         self.metadata: List[VectorMeta] = []
         # Legacy compat — plain text list used by save/load
         self.documents: List[str] = []
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            self._llm = _get_llm_client()
+        return self._llm
+
+    @llm.setter
+    def llm(self, value):
+        self._llm = value
 
     # ------------------------------------------------------------------
     # Data directory helper

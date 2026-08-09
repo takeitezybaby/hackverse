@@ -147,17 +147,8 @@ def generate_user_recommendations(user_id: str, target_date: Optional[str] = Non
         })
         item_idx += 1
 
-    # Fallback primary payload if all routines were low-occupancy
-    if not primary_allocation_payload:
-        primary_allocation_payload = {
-            "user_id": user_id,
-            "student_name": profile.get("name", f"Student {user_id}"),
-            "resource": "Gymnasium",
-            "usual_time": "19:00",
-            "predicted_occupancy": "94%",
-            "assigned_alternative": "18:30",
-            "reason": "Predicted congestion peak at 19:00 (94% full). Early entry at 18:30 recommended."
-        }
+    # If no routine is congested, primary_allocation_payload remains None
+    # (no load-balancing reallocation required)
 
     return {
         "user_id": user_id,

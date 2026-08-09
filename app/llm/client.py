@@ -77,7 +77,7 @@ class OllamaLLMClient:
             "num_predict": max_tokens,
             "stop": ["\n\n"],
             "repeat_penalty": 1.05,
-            "num_gpu": -1,   # GPU-first: use all available GPUs
+            "num_gpu": int(os.getenv("OLLAMA_NUM_GPU", "0")),
         }
 
         try:
