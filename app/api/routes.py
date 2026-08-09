@@ -200,128 +200,72 @@ class AskQueryRequest(BaseModel):
 @router.post("/ask")
 def ask_campus_copilot(payload: AskQueryRequest):
     """
-    RAG-driven copilot endpoint.
+    RAG-driven copilot endpoint. 
     Retrieves FAISS snapshot context + live state and generates grounded response via Ollama Granite.
-    Routes schedule/congestion-plan queries to the personalisation engine (Mode 3).
     """
-    from app.rag.retriever import CampusRAG as _RAG
-    from app.llm.prompts import is_schedule_query, build_schedule_query_prompt
-    from app.llm.client import OllamaLLMClient
-
     eval_time = payload.at_time or DEMO_NOW.isoformat()
     states = get_all_current_states(at_time=eval_time)
-
-    # Full compact summary — used in the API response field and as live-state context
-    full_state_summary = ", ".join(
-        f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states
-    )
-    compact_live = "\n".join(
-        f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states
-    )
-
-    is_fb = False
-    engine_label = "Granite 3.1 (Ollama Local)"
-    fallback_warn = None
-
-    # ── Mode 3: Schedule / congestion-plan query ─────────────────────────
-    # Only use Mode 3 when the query is about the user's overall day AND does
-    # NOT mention a specific venue — venue-specific timing questions ("when
-    # should I go to the gym") must go to Mode 1 so forecast slots are used.
-    _mentioned_check = _RAG._extract_resources_from_query(payload.query)
-    if is_schedule_query(payload.query) and payload.user_id and not _mentioned_check:
-        try:
-            rec = generate_user_recommendations(payload.user_id)
-            schedule = rec.get("schedule", [])
-            prompt = build_schedule_query_prompt(payload.query, schedule, compact_live)
-            llm = OllamaLLMClient()
-            answer = llm.generate(prompt, max_tokens=350)
-            is_fb = False
-        except Exception as e:
-            answer = (
-                "I couldn't load your schedule right now. "
-                f"Try asking about a specific venue instead. (detail: {e})"
-            )
-            is_fb = True
-            engine_label = "Rule-Based Engine (Fallback)"
-            fallback_warn = str(e)
-
-        return {
-            "query": payload.query,
-            "user_id": payload.user_id,
-            "answer": answer,
-            "live_state_summary": full_state_summary,
-            "sources": ["Personalisation Engine", "Live Digital Twin State"],
-            "engine": engine_label,
-            "is_fallback": is_fb,
-            "fallback_warning": fallback_warn,
-            "timestamp": eval_time,
-        }
-
-    # ── Mode 1: Resource-specific or general occupancy query ─────────────
-    state_map = {s.resource_name: s for s in states}
+    
+    from app.rag.retriever import CampusRAG as _RAG
     mentioned = _RAG._extract_resources_from_query(payload.query)
 
+    state_map = {s.resource_name: s for s in states}
     if mentioned:
         focus = list(mentioned)
-        # For gym queries auto-include the sports complex as the alternative option
         if "Gymnasium" in focus and "Indoor Sports Complex" not in focus:
             focus.append("Indoor Sports Complex")
-        state_lines = []
+        focused_lines = []
         for name in focus:
             s = state_map.get(name)
             if s:
                 anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
-                state_lines.append(
-                    f"{s.resource_name}: {s.occupancy_pct}% ({s.status})"
-                    f" — capacity {s.current_occupancy}/{s.max_capacity}{anomaly_str}"
-                )
-        live_state_str = "\n".join(state_lines)
+                focused_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
+        live_state_str = "\n".join(focused_lines)
     else:
-        live_state_str = compact_live
+        live_state_str = ", ".join(f"{s.resource_name}: {s.occupancy_pct}% ({s.status})" for s in states)
 
-    # For "when/what time" queries inject today's forecast so the LLM has
-    # real quieter slots to recommend instead of inventing times.
+    # Inject Layer 3 Personalization context if user_id is provided
+    if payload.user_id:
+        try:
+            rec = generate_user_recommendations(payload.user_id)
+            prim = rec.get("primary_allocation")
+            if prim and (not mentioned or prim.get("resource") in mentioned):
+                live_state_str += f"\nUser {payload.user_id} Personal Load-Balanced Plan: Shift from {prim.get('resource')} ({prim.get('usual_time')}) -> {prim.get('assigned_alternative')} (avoiding {prim.get('predicted_occupancy')} peak)."
+        except Exception:
+            pass
+
+    # Inject upcoming quiet forecast slots during daytime operating hours (07:00 to 21:30) for timing queries
     _TIMING_WORDS = ("what time", "when should", "when can", "best time",
                      "good time", "at what time", "which time", "when to go",
                      "when is it", "least crowded", "quietest")
-    is_timing_query = any(w in payload.query.lower() for w in _TIMING_WORDS)
-
-    if is_timing_query and mentioned:
+    if any(w in payload.query.lower() for w in _TIMING_WORDS) and mentioned:
         try:
             from app.twin.forecast import generate_daily_forecast
             from datetime import datetime
             today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
+            now_mins = datetime.fromisoformat(eval_time).hour * 60 + datetime.fromisoformat(eval_time).minute
+
+            def _t2m(t):
+                h, m = t.split(":")
+                return int(h) * 60 + int(m)
+
             for res_name in mentioned:
                 slots = generate_daily_forecast(res_name, today)
-                # Pick the 3 upcoming slots with the lowest predicted occupancy
-                now_mins = (datetime.fromisoformat(eval_time).hour * 60
-                            + datetime.fromisoformat(eval_time).minute)
-                def _t2m(t): h, m = t.split(":"); return int(h)*60+int(m)
-                future = [s for s in slots if _t2m(s.time_slot) >= now_mins]
-                quiet = sorted(future, key=lambda s: s.predicted_occupancy_pct)[:3]
+                # Filter to daytime operating hours (07:00 to 21:30)
+                op_slots = [s for s in slots if _t2m(s.time_slot) >= now_mins and 420 <= _t2m(s.time_slot) <= 1290]
+                if not op_slots:
+                    op_slots = [s for s in slots if 420 <= _t2m(s.time_slot) <= 1290]
+                
+                quiet = sorted(op_slots, key=lambda s: s.predicted_occupancy_pct)[:3]
                 if quiet:
-                    slot_strs = ", ".join(
-                        f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% — {s.predicted_status})"
-                        for s in quiet
-                    )
-                    live_state_str += f"\nQuieter slots today for {res_name}: {slot_strs}"
+                    slot_strs = ", ".join(f"{s.time_slot} ({s.predicted_occupancy_pct:.0f}% full)" for s in quiet)
+                    live_state_str += f"\nQuieter operating slots today for {res_name}: {slot_strs}"
         except Exception:
             pass
 
-    # Inject Layer 3 recommendation only when the query is about that resource
-    if payload.user_id and mentioned:
-        try:
-            rec = generate_user_recommendations(payload.user_id)
-            prim = rec.get("primary_allocation")
-            if prim and prim.get("resource") in mentioned:
-                live_state_str += (
-                    f"\nYour load-balanced plan: visit {prim.get('assigned_alternative')} "
-                    f"instead of {prim.get('resource')} at {prim.get('usual_time')} "
-                    f"(predicted {prim.get('predicted_occupancy')} full)."
-                )
-        except Exception:
-            pass
-
+    is_fb = False
+    engine_label = "Granite 3.1 (Ollama Local)"
+    fallback_warn = None
     try:
         rag = get_rag_service()
         answer = rag.answer_general_query(payload.query, live_state_str)
@@ -334,17 +278,17 @@ def ask_campus_copilot(payload: AskQueryRequest):
         engine_label = "Rule-Based Engine (Fallback)"
         fallback_warn = f"Ollama engine exception: {str(e)}"
         answer = f"Live state: {live_state_str}. (LLM engine status note: {str(e)})"
-
+    
     return {
         "query": payload.query,
         "user_id": payload.user_id,
         "answer": answer,
-        "live_state_summary": full_state_summary,
+        "live_state_summary": live_state_str,
         "sources": ["FAISS Snapshot Embeddings", "Live Digital Twin State"],
         "engine": engine_label,
         "is_fallback": is_fb,
         "fallback_warning": fallback_warn,
-        "timestamp": eval_time,
+        "timestamp": eval_time
     }
 
 
