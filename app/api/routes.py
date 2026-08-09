@@ -212,7 +212,17 @@ def ask_campus_copilot(payload: AskQueryRequest):
         anomaly_str = f" [ANOMALY: {s.active_anomaly}]" if s.active_anomaly else ""
         state_lines.append(f"{s.resource_name}: {s.occupancy_pct}% ({s.status}){anomaly_str}")
     live_state_str = ", ".join(state_lines)
-    
+
+    # Inject Layer 3 Personalization context if user_id is provided
+    if payload.user_id:
+        try:
+            rec = generate_user_recommendations(payload.user_id)
+            prim = rec.get("primary_allocation")
+            if prim:
+                live_state_str += f" | User {payload.user_id} Layer 3 Load-Balanced Plan: Shift from {prim.get('resource')} ({prim.get('usual_time')}) -> {prim.get('assigned_alternative')} (avoiding {prim.get('predicted_occupancy')}% peak)."
+        except Exception:
+            pass
+
     is_fb = False
     engine_label = "Granite 3.1 (Ollama Local)"
     fallback_warn = None
