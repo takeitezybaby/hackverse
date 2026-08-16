@@ -6,14 +6,16 @@ import os
 
 from app.db.database import init_db
 from app.api import ingest, routes
+from app.twin.simulation import sim_engine
 from data_gen.config import DEMO_NOW
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Ensure database & tables exist
+    # Startup: Ensure database & tables exist and start live simulation
     init_db()
+    sim_engine.start()
     yield
-    # Shutdown: Clean up resources if needed
+    sim_engine.stop()
 
 app = FastAPI(
     title="Campus Digital Twin API",
@@ -55,6 +57,11 @@ def root_allocate_alias():
     """Alias for /api/allocate so load balancing metrics can be fetched at root level."""
     return routes.get_campus_wide_load_balancing()
 
+@app.get("/api/sim/status", tags=["Simulation Engine"])
+def get_sim_status():
+    """Returns status of the live background simulation engine."""
+    return sim_engine.get_status()
+
 @app.get("/health", tags=["Health"])
 def health_check():
     """Health check endpoint returning server status, database state, and reference clock."""
@@ -64,7 +71,7 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "demo_now": DEMO_NOW.isoformat(),
+        "simulation": sim_engine.get_status(),
         "database_connected": db_exists,
         "database_file": db_file
     }

@@ -5,8 +5,11 @@ DB_PATH = Path(__file__).parent.parent.parent / "data" / "campus_twin.db"
 
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=20.0)
     cursor = conn.cursor()
+
+    cursor.execute("PRAGMA journal_mode=WAL;")
+    cursor.execute("PRAGMA synchronous=NORMAL;")
 
     cursor.executescript('''
         CREATE TABLE IF NOT EXISTS user_checkins (

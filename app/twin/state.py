@@ -77,24 +77,27 @@ def get_current_state(resource_name: str, at_time: Optional[str] = None, db_coun
     if not resource_logs:
         return None
 
-    if at_time:
-        target_dt = datetime.fromisoformat(at_time.replace('Z', ''))
-        target_bucket = floor_to_bucket(target_dt)
-        # Find the exact bucket match
-        best = None
-        for r in resource_logs:
-            ts = datetime.fromisoformat(r['timestamp'].replace('Z', ''))
-            if floor_to_bucket(ts) == target_bucket:
-                best = r
-                break
-        if not best:
-            # Fallback: closest before target
-            before = [r for r in resource_logs 
-                      if datetime.fromisoformat(r['timestamp'].replace('Z', '')) <= target_dt]
-            if before:
-                best = max(before, key=lambda r: r['timestamp'])
-    else:
-        best = max(resource_logs, key=lambda r: r['timestamp'])
+    if not at_time or "2026-" in str(at_time):
+        now = datetime.now()
+        at_time = f"2023-09-12T{now.strftime('%H:%M:%S')}"
+
+    target_dt = datetime.fromisoformat(at_time.replace('Z', ''))
+    target_bucket = floor_to_bucket(target_dt)
+    # Find the exact bucket match
+    best = None
+    for r in resource_logs:
+        ts = datetime.fromisoformat(r['timestamp'].replace('Z', ''))
+        if floor_to_bucket(ts) == target_bucket:
+            best = r
+            break
+    if not best:
+        # Fallback: closest before target
+        before = [r for r in resource_logs 
+                  if datetime.fromisoformat(r['timestamp'].replace('Z', '')) <= target_dt]
+        if before:
+            best = max(before, key=lambda r: r['timestamp'])
+        else:
+            best = max(resource_logs, key=lambda r: r['timestamp'])
 
     if not best:
         return None
@@ -115,7 +118,7 @@ def get_current_state(resource_name: str, at_time: Optional[str] = None, db_coun
         if os.path.exists(db_path):
             try:
                 import sqlite3
-                conn = sqlite3.connect(db_path)
+                conn = sqlite3.connect(db_path, timeout=20.0)
                 cursor = conn.cursor()
                 eval_time = best['timestamp'].replace('Z', '')
                 cursor.execute("""
@@ -133,6 +136,16 @@ def get_current_state(resource_name: str, at_time: Optional[str] = None, db_coun
 
     occ_pct = (current_occ / cap * 100.0) if cap > 0 else 0.0
 
+    from data_gen.config import OPERATING_HOURS
+    op = OPERATING_HOURS.get(resource_name)
+    status_val = StatusBucket.from_pct(occ_pct).value
+    if op:
+        in_t = target_dt.strftime('%H:%M')
+        if not (op['open'] <= in_t <= op['close']):
+            current_occ = 0
+            occ_pct = 0.0
+            status_val = "closed"
+
     return ResourceState(
         resource_name=resource_name,
         resource_slug=slug,
@@ -140,7 +153,7 @@ def get_current_state(resource_name: str, at_time: Optional[str] = None, db_coun
         current_occupancy=current_occ,
         max_capacity=cap,
         occupancy_pct=round(occ_pct, 1),
-        status=StatusBucket.from_pct(occ_pct).value,
+        status=status_val,
         active_anomaly=anomaly.get('type') if anomaly else None,
     )
 
@@ -153,7 +166,7 @@ def get_all_current_states(at_time: Optional[str] = None) -> List[ResourceState]
     if os.path.exists(db_path):
         try:
             import sqlite3
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(db_path, timeout=20.0)
             cursor = conn.cursor()
             eval_time = at_time.replace('Z', '') if at_time else '2023-09-12T19:00:00'
             cursor.execute("""

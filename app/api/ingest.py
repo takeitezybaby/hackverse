@@ -39,11 +39,9 @@ def ingest_checkin(payload: CheckinRequest):
     global _demo_offset_minutes
     
     # Process check-in timestamp
-    if not payload.checkin_time or "2026-" in payload.checkin_time:
-        # Stamp with DEMO_NOW + incremental demo offset
-        stamped_dt = DEMO_NOW + timedelta(minutes=_demo_offset_minutes)
-        _demo_offset_minutes += 2  # Advance 2 mins for next live checkin
-        checkin_time_str = stamped_dt.isoformat()
+    if not payload.checkin_time or "2026-" in str(payload.checkin_time):
+        now = datetime.now()
+        checkin_time_str = f"2023-09-12T{now.strftime('%H:%M:%S')}"
     else:
         checkin_time_str = payload.checkin_time
 
@@ -60,7 +58,7 @@ def ingest_checkin(payload: CheckinRequest):
 
     db_path = get_db_path()
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=20.0)
         cursor = conn.cursor()
         cursor.execute(f"""
             INSERT INTO {TABLE_USER_CHECKINS} (
@@ -93,7 +91,7 @@ def ingest_report(payload: ReportRequest):
     
     db_path = get_db_path()
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=20.0)
         cursor = conn.cursor()
         cursor.execute(f"""
             INSERT INTO {TABLE_CROWDSOURCED_REPORTS} (

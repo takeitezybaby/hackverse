@@ -39,7 +39,9 @@
       <div>
         <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
           Campus Buddy
-          <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-400 border border-indigo-800">FastAPI Live</span>
+          <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Live Simulation Active
+          </span>
         </h1>
         <p class="text-xs text-slate-400">Smart Campus Intelligence & Personal AI Assistant</p>
       </div>
@@ -47,12 +49,17 @@
 
     <!-- Right Clock & Score -->
     <div class="flex items-center space-x-3 text-xs font-mono">
+      <button onclick="showLoginModal()" id="user-badge-btn" class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-200 text-xs font-mono flex items-center gap-2 transition-all shadow-md">
+        <i class="fa-solid fa-user-circle text-cyan-400 text-sm"></i>
+        <span id="user-badge-text">Student: <strong class="text-cyan-400">u_0042</strong></span>
+        <i class="fa-solid fa-right-to-bracket text-slate-400 text-[10px]"></i>
+      </button>
       <button onclick="scrollToCopilot()" class="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-all shadow-md flex items-center gap-1.5">
         <i class="fa-solid fa-robot"></i> Campus Buddy Chat
       </button>
       <div class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center space-x-2 text-cyan-400">
         <i class="fa-solid fa-clock text-cyan-500"></i>
-        <span>Clock: <strong id="clock-display" class="text-white">2023-09-12 19:00</strong></span>
+        <span>Clock: <strong id="clock-display" class="text-white">2023-09-12 08:00</strong></span>
       </div>
       <div class="px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-emerald-400 flex items-center space-x-2">
         <i class="fa-solid fa-[#10b981] fa-shield-halved"></i>
@@ -210,6 +217,44 @@
     </div>
   </div>
 
+  <!-- Login Modal -->
+  <div id="login-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
+    <div class="glass-card rounded-2xl max-w-md w-full p-6 space-y-4 text-xs">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-white text-sm flex items-center gap-2">
+          <i class="fa-solid fa-right-to-bracket text-cyan-400"></i> Student Portal Login
+        </h3>
+        <button onclick="hideLoginModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-[11px] font-mono text-slate-300 block mb-1">User ID / Student Handle:</label>
+          <input type="text" id="login-input-id" value="u_0042" placeholder="e.g. u_0042, u_0007, u_0010" class="w-full bg-slate-900 border border-slate-700 text-xs rounded-xl p-2.5 text-white focus:outline-none focus:border-cyan-500 font-mono">
+        </div>
+
+        <div>
+          <label class="text-[11px] font-mono text-slate-400 block mb-1">Password (Optional for Demo):</label>
+          <input type="password" id="login-input-pass" placeholder="•••••••• (Leave blank)" class="w-full bg-slate-900 border border-slate-700 text-xs rounded-xl p-2.5 text-slate-400 focus:outline-none focus:border-cyan-500 font-mono">
+        </div>
+
+        <div>
+          <label class="text-[11px] font-mono text-slate-400 block mb-1.5">Quick Switch Demo Students:</label>
+          <div class="grid grid-cols-2 gap-2 text-[10px]">
+            <button onclick="quickSelectStudent('u_0042')" class="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-left">u_0042 (Alex - CS)</button>
+            <button onclick="quickSelectStudent('u_0007')" class="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-indigo-300 font-mono text-left">u_0007 (Abigail - CS)</button>
+            <button onclick="quickSelectStudent('u_0004')" class="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-300 font-mono text-left">u_0004 (Daniel - CE)</button>
+            <button onclick="quickSelectStudent('u_0010')" class="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-emerald-300 font-mono text-left">u_0010 (Ryan - ME)</button>
+          </div>
+        </div>
+
+        <button onclick="performUserLogin()" class="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-all shadow-lg flex items-center justify-center gap-2">
+          <i class="fa-solid fa-lock-open"></i> Log In & Load Personalization
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Ground Truth Modal -->
   <div id="gt-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
     <div class="glass-card rounded-2xl max-w-xl w-full p-6 space-y-4 text-xs">
@@ -225,6 +270,46 @@
     const API_BASE = "http://localhost:8000";
     let chartInstance = null;
     let cachedResources = [];
+    let selectedVenueName = "Main Library";
+    let activeUserId = localStorage.getItem("activeUserId") || "u_0042";
+
+    function updateHeaderBadge() {
+      const bText = document.getElementById('user-badge-text');
+      if (bText) bText.innerHTML = `Student: <strong class="text-cyan-400">${activeUserId}</strong>`;
+      const ingestInput = document.getElementById('ingest-user-id');
+      if (ingestInput) ingestInput.value = activeUserId;
+    }
+
+    function showLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) {
+        document.getElementById('login-input-id').value = activeUserId;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+    }
+
+    function hideLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function quickSelectStudent(userId) {
+      document.getElementById('login-input-id').value = userId;
+      performUserLogin();
+    }
+
+    function performUserLogin() {
+      const newId = document.getElementById('login-input-id').value.trim() || "u_0042";
+      activeUserId = newId;
+      localStorage.setItem("activeUserId", activeUserId);
+      updateHeaderBadge();
+      hideLoginModal();
+      refreshData();
+    }
 
     async function fetchAPI(endpoint) {
       try {
@@ -239,13 +324,15 @@
 
     async function refreshData() {
       document.getElementById('refresh-icon').classList.add('fa-spin');
+      updateHeaderBadge();
       
       const data = await fetchAPI('/api/forecast-frontend') || await fetchAPI('/forecast');
       if (data && Array.isArray(data)) {
         cachedResources = data;
         renderVenues(data);
         updateTicker(data);
-        if (data.length > 0) renderChart(data[0]);
+        const currentRes = data.find(r => r.name === selectedVenueName) || data[0];
+        renderChart(currentRes);
       } else {
         document.getElementById('venues-grid').innerHTML = `
           <div class="col-span-2 glass-card p-6 rounded-2xl text-center space-y-2">
@@ -255,11 +342,13 @@
         `;
       }
 
-      // Fetch live Layer 3 + Layer 4 report
-      const reportData = await fetchAPI('/api/report/daily/u_0042');
+      // Fetch live Layer 3 + Layer 4 report for active user
+      const reportData = await fetchAPI('/api/report/daily/' + activeUserId);
       if (reportData) {
         if (reportData.student_name) {
-          document.getElementById('user-profile-name').innerText = reportData.student_name + ' (u_0042)';
+          document.getElementById('user-profile-name').innerText = reportData.student_name + ' (' + activeUserId + ')';
+        } else {
+          document.getElementById('user-profile-name').innerText = 'Student (' + activeUserId + ')';
         }
         if (reportData.load_balance_score) {
           document.getElementById('load-score-badge').innerText = 'Score: ' + reportData.load_balance_score + '%';
@@ -273,6 +362,7 @@
 
     function getBucketColor(bucket) {
       switch(bucket) {
+        case 'closed': return 'bg-slate-900/90 text-slate-500 border-slate-800';
         case 'empty': return 'bg-emerald-950/80 text-emerald-400 border-emerald-800';
         case 'moderate': return 'bg-cyan-950/80 text-cyan-400 border-cyan-800';
         case 'high': return 'bg-amber-950/80 text-amber-400 border-amber-800';
@@ -324,6 +414,7 @@
     }
 
     function selectVenueForChart(venueName) {
+      selectedVenueName = venueName;
       const res = cachedResources.find(r => r.name === venueName);
       if (res) renderChart(res);
     }
@@ -380,6 +471,12 @@
       
       statusEl.innerText = "Sending check-in...";
       
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const activeCheckinTime = `2023-09-12T${hh}:${mm}:${ss}`;
+
       try {
         const response = await fetch(API_BASE + '/api/ingest/checkin', {
           method: 'POST',
@@ -387,6 +484,7 @@
           body: JSON.stringify({
             user_id: userId,
             resource_name: resName,
+            checkin_time: activeCheckinTime,
             duration_min: 60,
             source: 'live_demo_ui'
           })
@@ -396,9 +494,9 @@
         if (response.ok) {
           statusEl.innerText = `Check-in recorded! Stamped at ${data.stamped_checkin_time.substring(11, 16)}`;
           statusEl.className = "text-[11px] text-center font-mono text-emerald-400 font-bold";
-          setTimeout(refreshData, 500);
+          setTimeout(refreshData, 300);
         } else {
-          statusEl.innerText = "Failed: " + data.detail;
+          statusEl.innerText = "Failed: " + (data.detail || "Server error");
           statusEl.className = "text-[11px] text-center font-mono text-rose-400";
         }
       } catch (err) {
@@ -414,7 +512,7 @@
       modal.classList.add('flex');
       body.innerHTML = '<p class="text-slate-400 font-mono animate-pulse">Analyzing usual routine timings and generating optimized schedule...</p>';
 
-      const data = await fetchAPI('/api/schedule/personalized/u_0042');
+      const data = await fetchAPI('/api/schedule/personalized/' + activeUserId);
       if (!data || !data.itinerary) {
         body.innerHTML = '<p class="text-rose-400 font-mono">Failed to load schedule timeline.</p>';
         return;
@@ -559,7 +657,7 @@
         const response = await fetch(API_BASE + '/api/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: query, user_id: 'u_0042' })
+          body: JSON.stringify({ query: query, user_id: activeUserId })
         });
         const data = await response.json();
 
@@ -606,10 +704,11 @@
       el.innerText = `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
     }
 
-    // Initial load
+    // Initial load & live auto-refresh interval
     updateLiveClock();
     setInterval(updateLiveClock, 1000);
     refreshData();
+    setInterval(refreshData, 3000); // Auto-refresh venue telemetry every 3 seconds
   </script>
 </body>
 </html>

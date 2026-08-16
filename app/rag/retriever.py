@@ -633,7 +633,7 @@ class CampusRAG:
         resources = self._extract_resources_from_query(user_query)
         day_of_week = self._extract_day_of_week_from_query(user_query)
         context = self.search_context(
-            user_query, k=5,
+            user_query, k=2,
             resource_names=resources if resources else None,
             day_of_week=day_of_week,
         )

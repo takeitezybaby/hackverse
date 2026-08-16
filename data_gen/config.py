@@ -5,7 +5,7 @@ START_DATE = datetime(2023, 9, 1)
 NUM_DAYS = 30
 NUM_USERS = 1500
 RANDOM_SEED = 42
-DEMO_NOW = datetime(2023, 9, 12, 19, 0, 0)  # Reference clock for live demo (Tuesday evening)
+DEMO_NOW = datetime(2023, 9, 12, 8, 0, 0)  # Reference clock for live demo (8:00 AM Tuesday morning)
 
 # Checkin Generation Constants
 REROUTE_THRESHOLD_PCT = 90
@@ -27,6 +27,22 @@ RESOURCE_CAPACITIES = {
     'WiFi Zone - Academic Block': 400,
     'WiFi Zone - Library': 150,
     'WiFi Zone - Cafeteria': 200
+}
+
+# Venue Operating Hours (used by Digital Twin state and RAG engine)
+OPERATING_HOURS = {
+    'Main Library':               {'open': '08:00', 'close': '23:00'},
+    'Science Library':            {'open': '08:00', 'close': '22:00'},
+    'Central Cafeteria':          {'open': '07:30', 'close': '21:30'},
+    'Food Court':                 {'open': '08:00', 'close': '22:00'},
+    'Gymnasium':                  {'open': '06:00', 'close': '21:00'},
+    'Indoor Sports Complex':      {'open': '06:00', 'close': '21:00'},
+    'Student Center':             {'open': '07:00', 'close': '23:00'},
+    'Computer Lab A':             {'open': '08:00', 'close': '22:00'},
+    'Computer Lab B':             {'open': '08:00', 'close': '22:00'},
+    'WiFi Zone - Academic Block': {'open': '00:00', 'close': '23:59'},
+    'WiFi Zone - Library':        {'open': '07:00', 'close': '23:00'},
+    'WiFi Zone - Cafeteria':      {'open': '07:00', 'close': '22:00'},
 }
 
 # Anomaly Configurations

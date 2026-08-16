@@ -1,136 +1,170 @@
-# Campus-as-a-Digital-Twin Copilot
+# 🏛️ Campus Digital Twin & Prescriptive Load-Balancing AI Copilot
 
-## Quick Start (Every team member runs this first)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-brightgreen.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![Local LLM](https://img.shields.io/badge/AI-IBM%20Granite%203.1%208B%20(Local)-purple.svg)](https://ollama.com/)
 
-> **Note:** `data/` is gitignored. Run `setup.py` once after cloning to
-> generate all data files, seed the database, cache forecasts, and build
-> the FAISS index. You only need to do this once per machine.
+> **A real-time 5-Layer Campus Digital Twin system that models student mobility across 12 facilities, predicts 15-minute slot capacity up to 24 hours ahead, automatically load-balances student schedules when congestion triggers occur, and provides a 100% locally deployed IBM Granite RAG AI Copilot.**
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/takeitezybaby/hackverse.git
-cd hackverse
+---
 
-# 2. Install dependencies (Python 3.11+ required)
-pip install -r requirements.txt
+## 🌟 Key Features
 
-# 3. Start Ollama and pull the required models
-ollama serve                          # in a separate terminal
-ollama pull granite-embedding:278m
-ollama pull granite3.1-dense:8b
+* **🏛️ 12-Venue Digital Twin Engine**: Real-time capacity monitoring and 3-second live telemetry polling across libraries, computer labs, cafeterias, gymnasiums, and student centers.
+* **📈 7-Step ML Forecasting & True Demand Reconstruction**: Uses Holt-Winters exponential smoothing and corrects for capacity capping and reroute spillover ($\text{Demand}_{\text{true}} = \text{Occupancy}_{\text{observed}} + \text{Rerouted}_{\text{away}}$).
+* **⚡ Prescriptive Load-Balancing**: Detects $\ge 85\%$ congestion peaks and automatically re-aligns student daily schedules to underutilized alternatives, saving students **160+ minutes of waiting time daily**.
+* **🤖 100% Local IBM Granite RAG Copilot**: Answers natural queries using FAISS vector indexing, Ollama VRAM model pinning, and dynamic intent routing across time-specific, peak congestion, operating hours, cause/anomaly, and personal schedule queries.
+* **🔑 Multi-Student Login & Telemetry Sync**: Quick-switch demo student portal (`u_0042`, `u_0007`, `u_0004`, `u_0010`) that dynamically syncs personal schedules, load-balance scores, self check-in events, and copilot answers.
+* **🚨 Ground-Truth Anomaly Injection**: Simulates exam weeks, cultural fests, infrastructure outages, and class cancellations to stress-test real-time adaptive rerouting.
 
-# 4. ONE-TIME SETUP — generates all data, seeds DB, builds FAISS index
-python setup.py
+---
 
-# 5. Launch the full demo
-run_demo_mode.bat                     # Windows
-# or manually:
-python -m app.main                    # backend  → http://127.0.0.1:8000
-python -m http.server 5173 --directory frontend  # frontend → http://127.0.0.1:5173/demo.html
+## 🏗️ 5-Layer System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Layer0["Layer 0: Data & Synthetic Ingestion Stream"]
+        DB[("SQLite DB: campus_twin.db")]
+        GenSnap["daily_snapshots_gen.py (360 Days)"]
+        CheckinAPI["POST /api/ingest/checkin (Live Stream)"]
+    end
+
+    subgraph Layer1["Layer 1: Sensor & Aggregation Engine"]
+        WifiData["Wi-Fi / Turnstile Telemetry"]
+        Aggregator["15-Min Bucket Aggregator"]
+    end
+
+    subgraph Layer2["Layer 2: 7-Step ML Forecasting Engine"]
+        HWModel["Holt-Winters Exponential Smoothing"]
+        TrueDemand["Demand Reconstruction: D_true = O_obs + D_spill"]
+        Anomalies["Ground Truth Anomaly Injector"]
+    end
+
+    subgraph Layer3["Layer 3: Load Balancer & Personalization Engine"]
+        UserProfiles["1,500 Simulated Student Profiles"]
+        GreedyLB["Greedy Load Balancer (85% Threshold)"]
+        DaySchedule["Personal Day Schedule Optimizer"]
+    end
+
+    subgraph Layer4["Layer 4: Local RAG Copilot & Intent Router"]
+        FAISS["FAISS Vector DB (480 Embeddings)"]
+        GraniteEmbed["IBM Granite 278M Embedding Model"]
+        OllamaGranite["IBM Granite 3.1 8B LLM (Ollama Local)"]
+        IntentRouter["5-Intent Dynamic Query Router"]
+    end
+
+    subgraph UI["Frontend UI (demo.html)"]
+        TwinGrid["12-Venue Digital Twin Grid"]
+        ScheduleModal["Interactive Personal Schedule Viewer"]
+        CopilotChat["Live Granite RAG Chat Panel"]
+        LoginModal["Student Portal Login & User Sync"]
+    end
+
+    Layer0 --> Layer1
+    Layer1 --> Layer2
+    Layer2 --> Layer3
+    Layer3 --> Layer4
+    Layer4 --> UI
 ```
 
-### What `setup.py` does
+---
 
-| Step | What happens |
-|---|---|
-| 1 | Runs all 6 data generators — timetables, users, check-ins, occupancy logs, snapshots |
-| 2 | Generates 120 crowdsourced student reports |
-| 3 | Creates the SQLite schema (`data/campus_twin.db`) |
-| 4 | Seeds the DB from the generated JSON files |
-| 5 | Caches 25 920 Layer-2 forecast slots (30 days × 12 resources × 72 slots) |
-| 6 | Embeds 480 documents and builds the FAISS RAG index |
+## 🚀 Quick Start Guide
 
-Re-running `setup.py` is safe — each step clears its previous state before writing.
+### Prerequisites
+* **Python**: 3.11 or higher
+* **Ollama**: Download and install from [ollama.com](https://ollama.com/)
 
+---
 
-## Project Structure
+### Step 1: Clone the Repository & Install Dependencies
+```bash
+git clone https://github.com/takeitezybaby/hackverse.git
+cd hackverse
+pip install -r requirements.txt
+```
+
+---
+
+### Step 2: Pull Local IBM Granite AI Models
+Start the Ollama daemon and pull the embedding and LLM models:
+```bash
+# In a separate terminal
+ollama serve
+
+# Pull models (IBM Granite 278M Embeddings + Granite 3.1 8B Dense LLM)
+ollama pull granite-embedding:278m
+ollama pull granite3.1-dense:8b
+```
+
+---
+
+### Step 3: Run One-Time System Initialization
+Run `setup.py` to generate synthetic mobility datasets, seed the SQLite database (`data/campus_twin.db`), cache forecasts, and build the FAISS vector index:
+```bash
+python setup.py
+```
+
+---
+
+### Step 4: Launch the System
+
+#### Windows Quick Launch:
+```cmd
+run_demo_mode.bat
+```
+
+#### Manual Launch:
+```bash
+# Terminal 1: Launch FastAPI Backend Server
+python -m app.main
+# Server runs on http://127.0.0.1:8000
+
+# Terminal 2: Launch Frontend Web UI
+python -m http.server 5173 --directory frontend
+# Open browser at http://127.0.0.1:5173/demo.html
+```
+
+---
+
+## 🔌 API Endpoints Summary
+
+| Endpoint | Method | Description |
+| :--- | :---: | :--- |
+| `/api/forecast-frontend` | `GET` | Returns live occupancy readings, forecast curves, and status for all 12 venues. |
+| `/api/report/daily/{user_id}` | `GET` | Returns Layer 3 load-balancing score, personalized itinerary, and daily summary for a student. |
+| `/api/schedule/personalized/{user_id}` | `GET` | Returns itemized timeline shift recommendations and wait-time savings. |
+| `/api/ask` | `POST` | RAG Copilot query endpoint powered by IBM Granite 3.1 & FAISS similarity search. |
+| `/api/ingest/checkin` | `POST` | Ingests live student check-in events and updates venue telemetry in real time. |
+| `/api/events/ground-truth` | `GET` | Fetches active simulated ground-truth anomaly events (exams, fests, outages). |
+
+---
+
+## 📁 Repository Layout
 
 ```
 hackverse/
 ├── app/
-│   ├── contracts.py          ← SHARED: All data structures (EVERYONE imports from here)
-│   ├── main.py               ← FastAPI app entry point
-│   ├── db/                   ← P1: Database setup + seeding
-│   │   ├── __init__.py
-│   │   ├── database.py
-│   │   └── seed.py
-│   ├── api/                  ← P1 (ingest) + P4 (routes)
-│   │   ├── __init__.py
-│   │   ├── ingest.py         ← P1: /ingest/* endpoints
-│   │   └── routes.py         ← P4: /forecast/*, /report/*, /ask, /allocate
-│   ├── twin/                 ← P2: Digital twin state model
-│   │   ├── __init__.py
-│   │   ├── state.py          ← Resource state management
-│   │   └── forecast.py       ← Forecasting logic
-│   ├── personalization/      ← P2: Personalization engine
-│   │   ├── __init__.py
-│   │   ├── profile.py        ← Usual-hours derivation
-│   │   ├── congestion.py     ← Congestion matching
-│   │   └── allocator.py      ← Greedy load-balanced allocation
-│   ├── llm/                  ← P3: LLM integration
-│   │   ├── __init__.py
-│   │   ├── client.py         ← Ollama/Granite client
-│   │   └── prompts.py        ← Prompt templates
-│   └── rag/                  ← P3: RAG pipeline
-│       ├── __init__.py
-│       ├── embeddings.py     ← Embedding generation + FAISS indices
-│       └── retriever.py      ← Similarity search per resource category
-├── frontend/                 ← P4: Dashboard
-│   ├── index.html
-│   ├── css/
-│   ├── js/
-│   └── assets/
-├── data_gen/                 ← P1: Synthetic data generators
-├── data/                     ← Generated data (gitignored)
-├── requirements.txt          ← Pinned dependencies
-└── .gitignore
+│   ├── contracts.py          # Shared data contracts, schemas, and resource constants
+│   ├── main.py               # FastAPI application entry point & CORS configuration
+│   ├── db/                   # SQLite database initialization & seeding
+│   ├── api/                  # REST API routes (ingest, forecast, reports, copilot)
+│   ├── twin/                 # Layer 1 & 2 Digital Twin state & 7-step forecasting engine
+│   ├── personalization/      # Layer 3 prescriptive load balancer & schedule optimizer
+│   ├── llm/                  # Layer 4 Ollama IBM Granite LLM client & intent router
+│   └── rag/                  # Layer 4 FAISS embedding indexer & vector retriever
+├── frontend/                 # Single-page web dashboard (Vanilla JS, Tailwind CSS, Chart.js)
+│   └── demo.html
+├── data_gen/                 # Layer 0 synthetic data generators (snapshots, users, checkins)
+├── data/                     # Generated SQLite DB & vector indices (gitignored)
+├── setup.py                  # One-time pipeline initialization script
+├── requirements.txt          # Pinned Python dependencies
+└── LICENSE                   # MIT License
 ```
 
-## Team Rules
+---
 
-### 1. NEVER edit another person's folder without asking
-- P1 owns: `data_gen/`, `app/db/`, `app/api/ingest.py`
-- P2 owns: `app/twin/`, `app/personalization/`
-- P3 owns: `app/llm/`, `app/rag/`
-- P4 owns: `frontend/`, `app/api/routes.py`
-- SHARED (announce changes): `app/contracts.py`, `app/main.py`, `requirements.txt`
+## 📜 License
 
-### 2. Always import from contracts.py
-```python
-# GOOD
-from app.contracts import ResourceReading, StatusBucket, RESOURCES
-
-# BAD - defining your own version
-class ResourceReading:  # NO! Use the shared one
-    ...
-```
-
-### 3. Git workflow
-```bash
-# Work on your own branch
-git checkout -b p1/database-setup    # P1
-git checkout -b p2/forecasting       # P2
-git checkout -b p3/rag-pipeline      # P3
-git checkout -b p4/dashboard         # P4
-
-# Commit often
-git add -A && git commit -m "P1: added SQLite schema"
-
-# Before merging: pull main first
-git checkout main && git pull
-git checkout p1/database-setup && git merge main
-# Fix conflicts, then push
-git push origin p1/database-setup
-# Create PR or merge to main
-```
-
-### 4. Integration checkpoints
-- **Hour 8**: P1 + P2 integrate (data flows into forecast)
-- **Hour 16**: P2 + P3 integrate (forecast feeds into RAG context)
-- **Hour 22**: P3 + P4 integrate (LLM responses render in dashboard)
-- **Hour 28**: Full integration test (all layers end-to-end)
-
-### 5. If you change contracts.py
-1. Message the group chat FIRST
-2. Describe what changed and why
-3. Everyone pulls and re-tests
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for more details.

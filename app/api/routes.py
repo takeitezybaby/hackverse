@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
+from datetime import datetime
 import json
 import os
 
@@ -97,7 +98,9 @@ def get_ground_truth_events():
 @router.get("/forecast-frontend")
 def get_frontend_formatted_forecast():
     """Returns all 12 resources formatted for the React frontend (campus-twin-copilot)."""
-    states = get_all_current_states(at_time=DEMO_NOW.isoformat())
+    now = datetime.now()
+    eval_time = f"2023-09-12T{now.strftime('%H:%M:%S')}"
+    states = get_all_current_states(at_time=eval_time)
     items = []
     
     cat_map = {
@@ -119,10 +122,10 @@ def get_frontend_formatted_forecast():
                 category = v
                 break
 
-        # Generate 8 hourly forecast points for chart
+        # Generate hourly forecast points for chart (starting from 06:00 AM)
         hourly_fc = []
         daily_slots = generate_daily_forecast(state.resource_name, "2023-09-12")
-        for hour in [8, 10, 12, 14, 16, 18, 20, 22]:
+        for hour in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
             slot_time = f"{hour:02d}:00"
             matching = next((s for s in daily_slots if s.time_slot == slot_time), None)
             occ = matching.predicted_occupancy_pct if matching else 0.0
@@ -203,7 +206,11 @@ def ask_campus_copilot(payload: AskQueryRequest):
     RAG-driven copilot endpoint. 
     Retrieves FAISS snapshot context + live state and generates grounded response via Ollama Granite.
     """
-    eval_time = payload.at_time or DEMO_NOW.isoformat()
+    if not payload.at_time or "2026-" in str(payload.at_time):
+        now = datetime.now()
+        eval_time = f"2023-09-12T{now.strftime('%H:%M:%S')}"
+    else:
+        eval_time = payload.at_time
     states = get_all_current_states(at_time=eval_time)
     
     from app.rag.retriever import CampusRAG as _RAG
@@ -280,7 +287,6 @@ def ask_campus_copilot(payload: AskQueryRequest):
     elif is_peak_query and mentioned:
         try:
             from app.twin.forecast import generate_daily_forecast
-            from datetime import datetime
             today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
             peak_lines = []
             for res_name in mentioned:
@@ -304,7 +310,6 @@ def ask_campus_copilot(payload: AskQueryRequest):
 
         try:
             from app.twin.forecast import generate_daily_forecast
-            from datetime import datetime
             today = datetime.fromisoformat(eval_time).strftime("%Y-%m-%d")
             now_mins = datetime.fromisoformat(eval_time).hour * 60 + datetime.fromisoformat(eval_time).minute
 

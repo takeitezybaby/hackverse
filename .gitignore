@@ -1,33 +1,45 @@
-# Data
+# Data & Databases
 data/
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 
-# Python
+# Python Virtual Environments & Packages
 venv/
+env/
+ENV/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 *.egg-info/
 dist/
 build/
 .eggs/
 
-# IDE & Tooling
+# Development, IDE & Tooling
 .vscode/
 .idea/
 .aistudio/
+.tools/
+scratch/
+.gemini/
 *.swp
 *.swo
 *.log
 
-# OS
+# OS Generated Files
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Environment
+# Environment Variables
 .env
+.env.local
 
-# Frontend / Node
+# Frontend & Web Build Outputs
 node_modules/
 frontend/node_modules/
 frontend/dist/
